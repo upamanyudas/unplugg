@@ -9,12 +9,22 @@ ponytail: shell out to the two CLIs already installed instead of binding
 AVFoundation + CoreAudio in PyObjC. Enumeration runs once when Preferences opens
 — a subprocess is nothing, and it dodges ~100 lines of untested struct marshaling.
 """
+import os
 import re
 import shutil
 import subprocess
 
-FFMPEG = shutil.which("ffmpeg")
-SWITCH = shutil.which("SwitchAudioSource")
+
+def _find(name):
+    """which() first, then the Homebrew bins — a GUI/.app launch has a minimal
+    PATH that omits /opt/homebrew/bin, which is why enumeration came back empty."""
+    return shutil.which(name) or next(
+        (p for p in (f"/opt/homebrew/bin/{name}", f"/usr/local/bin/{name}")
+         if os.path.exists(p)), None)
+
+
+FFMPEG = _find("ffmpeg")
+SWITCH = _find("SwitchAudioSource")
 
 _cache = None  # (cameras, mics)
 

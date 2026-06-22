@@ -22,6 +22,7 @@ DEFAULTS = {
     "camera_index": 0,           # ffmpeg avfoundation video device index
     "mic_index": 0,              # ffmpeg avfoundation audio device index
     "speaker_name": "",          # output device for the siren ("" = system default)
+    "media_dir": str(Path.home() / "Pictures" / "unplugg"),  # where photos/video are saved
     "telegram_destinations": [],  # [{"name", "token", "chat_id"}]
     "show_overlay": True,
     "lock_device": False,

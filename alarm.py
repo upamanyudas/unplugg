@@ -4,6 +4,7 @@ location, Telegram, lock. Telegram always fires; the rest are toggles.
 Called from the monitor's background thread, so it can block freely.
 """
 import subprocess
+import threading
 from pathlib import Path
 
 import capture
@@ -12,7 +13,8 @@ import location
 import telegram
 from utils import asset_path, lock_screen
 
-_siren = None          # afplay process
+_siren_stop = threading.Event()
+_siren_thread = None   # loops afplay until stopped
 _prev_volume = None    # system volume to restore
 _prev_speaker = None   # output device to restore
 
@@ -33,11 +35,11 @@ def trigger(config: dict, event: str):
 
 
 def _start_siren(speaker):
-    """Play the siren at full volume on the chosen output, no matter the current
+    """Loop the siren at full volume on the chosen output, no matter the current
     system volume. Saves prior volume + output device to restore on stop."""
-    global _siren, _prev_volume, _prev_speaker
+    global _siren_thread, _prev_volume, _prev_speaker
     siren = asset_path("siren.wav")
-    if not Path(siren).exists():
+    if not Path(siren).exists() or (_siren_thread and _siren_thread.is_alive()):
         return
 
     if speaker:
@@ -47,15 +49,27 @@ def _start_siren(speaker):
     _prev_volume = _osascript("output volume of (get volume settings)")
     _osascript("set volume output volume 100 without output muted")
 
-    # ponytail: afplay ships with macOS — no audio dependency to bundle.
-    _siren = subprocess.Popen(["afplay", "-v", "1", siren])
+    _siren_stop.clear()
+    _siren_thread = threading.Thread(target=_siren_loop, args=(siren,), daemon=True)
+    _siren_thread.start()
+
+
+def _siren_loop(siren):
+    # ponytail: afplay ships with macOS. Re-spawn it each pass; the tiny gap
+    # between loops is fine for an alarm — a seamless siren needs a longer wav.
+    while not _siren_stop.is_set():
+        p = subprocess.Popen(["afplay", "-v", "1", siren])
+        while p.poll() is None:
+            if _siren_stop.wait(0.2):
+                p.terminate()
+                return
 
 
 def stop_siren():
-    global _siren, _prev_volume, _prev_speaker
-    if _siren and _siren.poll() is None:
-        _siren.terminate()
-    _siren = None
+    global _prev_volume, _prev_speaker
+    _siren_stop.set()
+    if _siren_thread:
+        _siren_thread.join(timeout=2)
     if _prev_volume is not None:
         _osascript(f"set volume output volume {_prev_volume}")
         _prev_volume = None

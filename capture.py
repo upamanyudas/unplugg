@@ -11,19 +11,25 @@ from pathlib import Path
 
 import devices
 
-MEDIA_DIR = Path.home() / "Library" / "Application Support" / "unplugg" / "media"
+_DEFAULT_DIR = Path.home() / "Pictures" / "unplugg"
+
+
+def _media_dir(config):
+    d = Path(config.get("media_dir") or _DEFAULT_DIR).expanduser()
+    d.mkdir(parents=True, exist_ok=True)
+    return d
 
 
 def capture(config, photos: int = 3, video_seconds: int = 10):
     """Record, then return (photo_path, video_path); either may be None."""
-    MEDIA_DIR.mkdir(parents=True, exist_ok=True)
+    media = _media_dir(config)
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    video = MEDIA_DIR / f"{stamp}.mp4"
+    video = media / f"{stamp}.mp4"
 
     if devices.FFMPEG and _ffmpeg_record(config, video, video_seconds):
-        photo = _ffmpeg_stills(video, stamp, photos)
+        photo = _ffmpeg_stills(media, video, stamp, photos)
         return photo, video
-    return _opencv_fallback(stamp, video, photos, video_seconds)
+    return _opencv_fallback(media, stamp, video, photos, video_seconds)
 
 
 def _ffmpeg_record(config, video, seconds) -> bool:
@@ -39,16 +45,16 @@ def _ffmpeg_record(config, video, seconds) -> bool:
         return False
 
 
-def _ffmpeg_stills(video, stamp, photos):
-    pattern = str(MEDIA_DIR / f"{stamp}_%d.jpg")
+def _ffmpeg_stills(media, video, stamp, photos):
+    pattern = str(media / f"{stamp}_%d.jpg")
     subprocess.run([devices.FFMPEG, "-y", "-i", str(video), "-vf", "fps=1",
                     "-frames:v", str(photos), pattern],
                    capture_output=True, timeout=30)
-    shots = sorted(MEDIA_DIR.glob(f"{stamp}_*.jpg"))
+    shots = sorted(media.glob(f"{stamp}_*.jpg"))
     return shots[-1] if shots else None
 
 
-def _opencv_fallback(stamp, video, photos, seconds):
+def _opencv_fallback(media, stamp, video, photos, seconds):
     # ponytail: video-only fallback; audio needs ffmpeg, which we'd have used.
     import time
     import cv2
@@ -59,7 +65,7 @@ def _opencv_fallback(stamp, video, photos, seconds):
     for i in range(photos):
         ok, frame = cam.read()
         if ok:
-            photo = MEDIA_DIR / f"{stamp}_{i}.jpg"
+            photo = media / f"{stamp}_{i}.jpg"
             cv2.imwrite(str(photo), frame)
     w = int(cam.get(cv2.CAP_PROP_FRAME_WIDTH)) or 640
     h = int(cam.get(cv2.CAP_PROP_FRAME_HEIGHT)) or 480

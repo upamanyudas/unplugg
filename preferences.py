@@ -1,19 +1,21 @@
 """Native Preferences window — the one home for every setting, organized into
 tabs (Triggers / Actions / Devices / Permissions).
 
-ponytail: tabs instead of one tall scrolling column — keeps every pane under
-~350px so it fits a laptop screen, and it's the native System-Settings shape.
-Manual top-down layout per page (Auto Layout is ~3x the code for static panes).
-PAGE_H is the single layout knob if a control ever clips.
+ponytail: tabs instead of one tall scrolling column — keeps every pane short and
+is the native System-Settings shape. Controls are laid out against the tab
+view's real contentRect (_CW/_PH), not the window width, so nothing spills past
+the pane edge. Manual top-down layout (Auto Layout is ~3x the code here).
 
 PyObjC note: _Prefs subclasses NSObject, so only its target/action + delegate
 methods (all ending in `_`) live on the class; every layout helper is a module
 function, so PyObjC never tries to bridge them into selectors.
 """
+from pathlib import Path
+
 from AppKit import (
     NSApplication, NSWindow, NSButton, NSSlider, NSTextField, NSPopUpButton,
     NSView, NSFont, NSColor, NSBackingStoreBuffered, NSTabView, NSTabViewItem,
-    NSWindowStyleMaskTitled, NSWindowStyleMaskClosable,
+    NSOpenPanel, NSWindowStyleMaskTitled, NSWindowStyleMaskClosable,
 )
 from Foundation import NSObject, NSMakeRect
 
@@ -27,8 +29,9 @@ from config import save_config
 _controller = None  # retain while open
 
 W = 380
-PAD = 20
-PAGE_H = 380  # layout height per tab page
+PAD = 16
+_CW = W - 40   # content width  (set from the tab view's contentRect in _build)
+_PH = 380      # content height (ditto)
 
 PERMS = [
     ("camera", "Camera"),
@@ -75,6 +78,18 @@ class _Prefs(NSObject):
         self.cfg["speaker_name"] = "" if idx == 0 else sender.titleOfSelectedItem()
         save_config(self.cfg)
 
+    def chooseFolder_(self, _):
+        panel = NSOpenPanel.openPanel()
+        panel.setCanChooseDirectories_(True)
+        panel.setCanChooseFiles_(False)
+        panel.setAllowsMultipleSelection_(False)
+        panel.setCanCreateDirectories_(True)
+        if panel.runModal() == 1:  # NSModalResponseOK
+            path = panel.URLs()[0].path()
+            self.cfg["media_dir"] = path
+            save_config(self.cfg)
+            self.dirlabel.setStringValue_(_short(path))
+
     def addDest_(self, _):
         dest = dialogs.setup_telegram()
         if dest:
@@ -105,6 +120,7 @@ class _Prefs(NSObject):
 
 # ---- construction (module functions, not bridged to ObjC) -----------------
 def _build(app):
+    global _CW, _PH
     ctrl = _Prefs.alloc().init()
     ctrl.app = app
     ctrl.cfg = app.config
@@ -120,10 +136,14 @@ def _build(app):
     ctrl.window = win
 
     tabs = NSTabView.alloc().initWithFrame_(NSMakeRect(10, 10, W - 20, height - 20))
+    cr = tabs.contentRect()  # actual area for a tab's view — lay out against this
+    _CW = int(cr.size.width) if cr.size.width > 80 else W - 40
+    _PH = int(cr.size.height) if cr.size.height > 80 else height - 70
+
     for title, builder in [("Triggers", _triggers_page), ("Actions", _actions_page),
                            ("Devices", _devices_page), ("Permissions", _permissions_page)]:
-        page = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, W - 20, PAGE_H))
-        builder(ctrl, page, PAGE_H - PAD)
+        page = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, _CW, _PH))
+        builder(ctrl, page, _PH - PAD)
         item = NSTabViewItem.alloc().initWithIdentifier_(title)
         item.setLabel_(title)
         item.setView_(page)
@@ -151,7 +171,8 @@ def _actions_page(ctrl, view, y):
     y = _checkbox(ctrl, view, "send_location", "Send location", y)
     y = _checkbox(ctrl, view, "capture_media", "Send photo & video to Telegram", y)
     y = _checkbox(ctrl, view, "record_audio", "Record audio with video", y)
-    _destinations(ctrl, view, y)
+    y = _destinations(ctrl, view, y)
+    _folder_row(ctrl, view, y)
 
 
 def _devices_page(ctrl, view, y):
@@ -178,7 +199,7 @@ def _permissions_page(ctrl, view, y):
 
 # ---- row builders ---------------------------------------------------------
 def _heading(view, text, y):
-    lbl = _label(text, NSMakeRect(PAD, y - 18, W - 2 * PAD, 18), 13, bold=True)
+    lbl = _label(text, NSMakeRect(PAD, y - 18, _CW - 2 * PAD, 18), 13, bold=True)
     lbl.setTextColor_(NSColor.secondaryLabelColor())
     view.addSubview_(lbl)
     return y - 28
@@ -186,7 +207,7 @@ def _heading(view, text, y):
 
 def _checkbox(ctrl, view, key, label, y):
     b = NSButton.checkboxWithTitle_target_action_(label, ctrl, "toggle:")
-    b.setFrame_(NSMakeRect(PAD + 4, y - 22, W - 2 * PAD, 22))
+    b.setFrame_(NSMakeRect(PAD, y - 22, _CW - 2 * PAD, 22))
     b.setState_(1 if ctrl.cfg[key] else 0)
     ctrl.checks[b] = key
     view.addSubview_(b)
@@ -194,9 +215,9 @@ def _checkbox(ctrl, view, key, label, y):
 
 
 def _slider(ctrl, view, y):
-    ctrl.sens = _label("", NSMakeRect(PAD + 24, y - 18, W, 16), 11)
+    ctrl.sens = _label("", NSMakeRect(PAD + 20, y - 18, _CW - 2 * PAD - 20, 16), 11)
     ctrl.sens.setTextColor_(NSColor.secondaryLabelColor())
-    s = NSSlider.alloc().initWithFrame_(NSMakeRect(PAD + 24, y - 44, W - 2 * PAD - 24, 22))
+    s = NSSlider.alloc().initWithFrame_(NSMakeRect(PAD + 20, y - 44, _CW - 2 * PAD - 20, 22))
     s.setMinValue_(1); s.setMaxValue_(45)
     s.setDoubleValue_(ctrl.cfg["angle_threshold"])
     s.setTarget_(ctrl); s.setAction_("sensitivity:")
@@ -206,10 +227,10 @@ def _slider(ctrl, view, y):
 
 
 def _popup_row(ctrl, view, caption, items, sel, action, y):
-    cap = _label(caption, NSMakeRect(PAD, y - 16, W - 2 * PAD, 16), 11)
+    cap = _label(caption, NSMakeRect(PAD, y - 16, _CW - 2 * PAD, 16), 11)
     cap.setTextColor_(NSColor.secondaryLabelColor())
     view.addSubview_(cap)
-    pop = NSPopUpButton.alloc().initWithFrame_(NSMakeRect(PAD, y - 44, W - 2 * PAD, 25))
+    pop = NSPopUpButton.alloc().initWithFrame_(NSMakeRect(PAD, y - 44, _CW - 2 * PAD, 25))
     pop.addItemsWithTitles_(items)
     if 0 <= sel < len(items):
         pop.selectItemAtIndex_(sel)
@@ -219,28 +240,42 @@ def _popup_row(ctrl, view, caption, items, sel, action, y):
 
 
 def _destinations(ctrl, view, y):
-    cap = _label("Telegram destinations", NSMakeRect(PAD + 4, y - 18, W, 16), 11)
+    cap = _label("Telegram destinations", NSMakeRect(PAD, y - 18, _CW - 2 * PAD, 16), 11)
     cap.setTextColor_(NSColor.secondaryLabelColor())
     view.addSubview_(cap)
     ctrl.popup = NSPopUpButton.alloc().initWithFrame_(
-        NSMakeRect(PAD + 4, y - 46, W - 2 * PAD - 150, 25))
-    add = NSButton.alloc().initWithFrame_(NSMakeRect(W - PAD - 140, y - 47, 70, 26))
+        NSMakeRect(PAD, y - 46, _CW - 2 * PAD - 150, 25))
+    add = NSButton.alloc().initWithFrame_(NSMakeRect(_CW - PAD - 144, y - 47, 70, 26))
     add.setTitle_("Add…"); add.setBezelStyle_(1)
     add.setTarget_(ctrl); add.setAction_("addDest:")
-    rm = NSButton.alloc().initWithFrame_(NSMakeRect(W - PAD - 68, y - 47, 68, 26))
+    rm = NSButton.alloc().initWithFrame_(NSMakeRect(_CW - PAD - 72, y - 47, 72, 26))
     rm.setTitle_("Remove"); rm.setBezelStyle_(1)
     rm.setTarget_(ctrl); rm.setAction_("removeDest:")
     view.addSubview_(ctrl.popup); view.addSubview_(add); view.addSubview_(rm)
     _refresh_popup(ctrl)
+    return y - 58
+
+
+def _folder_row(ctrl, view, y):
+    cap = _label("Save photos & video to", NSMakeRect(PAD, y - 16, _CW - 2 * PAD, 16), 11)
+    cap.setTextColor_(NSColor.secondaryLabelColor())
+    view.addSubview_(cap)
+    ctrl.dirlabel = _label(_short(ctrl.cfg.get("media_dir", "")),
+                           NSMakeRect(PAD, y - 40, _CW - 2 * PAD - 90, 20), 11)
+    view.addSubview_(ctrl.dirlabel)
+    btn = NSButton.alloc().initWithFrame_(NSMakeRect(_CW - PAD - 84, y - 42, 84, 26))
+    btn.setTitle_("Choose…"); btn.setBezelStyle_(1)
+    btn.setTarget_(ctrl); btn.setAction_("chooseFolder:")
+    view.addSubview_(btn)
 
 
 def _perm_row(ctrl, view, key, label, y):
-    view.addSubview_(_label(label, NSMakeRect(PAD, y - 20, 120, 18), 12))
-    st = _label(_perm_text(key), NSMakeRect(PAD + 120, y - 20, 120, 18), 11)
+    view.addSubview_(_label(label, NSMakeRect(PAD, y - 20, 110, 18), 12))
+    st = _label(_perm_text(key), NSMakeRect(PAD + 110, y - 20, 110, 18), 11)
     st.setTextColor_(NSColor.secondaryLabelColor())
     view.addSubview_(st)
     ctrl.permlabels[key] = st
-    btn = NSButton.alloc().initWithFrame_(NSMakeRect(W - PAD - 100, y - 22, 80, 24))
+    btn = NSButton.alloc().initWithFrame_(NSMakeRect(_CW - PAD - 80, y - 22, 80, 24))
     btn.setTitle_("Grant"); btn.setBezelStyle_(1)
     btn.setTarget_(ctrl); btn.setAction_("permGrant:")
     view.addSubview_(btn)
@@ -261,6 +296,11 @@ def _perm_text(key):
 
 def _sens_text(deg):
     return f"Screen sensitivity: {int(round(deg))}° of movement"
+
+
+def _short(path):
+    home = str(Path.home())
+    return path.replace(home, "~") if path else "~/Pictures/unplugg"
 
 
 def _label(s, rect, size, bold=False):

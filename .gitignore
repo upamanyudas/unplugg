@@ -2,6 +2,7 @@
 __pycache__/
 *.py[cod]
 *$py.class
+.claudeignore
 
 # C extensions
 *.so
@@ -182,3 +183,4 @@ cython_debug/
 
 
 .DS_Store
+ai-prompt.md

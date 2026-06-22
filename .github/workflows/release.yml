@@ -1,0 +1,54 @@
+name: Release unplugg
+
+# Admin-initiated: run from the Actions tab, type the version. Builds the .app
+# on both Apple Silicon and Intel runners and attaches both to a GitHub Release.
+#
+# ponytail: per-arch builds instead of a single "universal2" binary. opencv and
+# pyobjc don't reliably ship universal2 wheels, so a real universal2 py2app build
+# is flaky. Two native builds are honest and actually work. Revisit if every
+# dependency gains universal2 wheels.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version, e.g. 1.0.0"
+        required: true
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - runner: macos-14   # Apple Silicon (arm64)
+            arch: arm64
+          - runner: macos-13   # Intel (x86_64)
+            arch: x86_64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Stamp version
+        run: |
+          sed -i '' "s/1\.0\.0/${{ inputs.version }}/g" setup.py
+      - name: Build .app
+        run: python setup.py py2app
+      - name: Zip
+        run: |
+          cd dist
+          ditto -c -k --keepParent unplugg.app "unplugg-${{ inputs.version }}-${{ matrix.arch }}.zip"
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: "v${{ inputs.version }}"
+          files: dist/*.zip
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+# Notarization (optional): add a "codesign --deep --sign <Developer ID>" step and
+# an "xcrun notarytool submit" step before zipping, using APPLE_ID / TEAM_ID /
+# APP_PASSWORD secrets. Unsigned apps run after right-click > Open.

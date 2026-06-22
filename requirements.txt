@@ -1,0 +1,14 @@
+rumps>=0.4.0
+requests>=2.31
+opencv-python>=4.9            # capture fallback when ffmpeg is absent
+pybooklid>=0.1               # lid-angle sensor (2019+ Macs); falls back gracefully
+pyobjc-framework-Cocoa>=10
+pyobjc-framework-CoreLocation>=10
+pyobjc-framework-AVFoundation>=10   # camera/mic permission status + device media types
+pyobjc-framework-Quartz>=10         # Accessibility (AXIsProcessTrusted) status
+py2app>=0.28                 # build only
+
+# External CLIs (Homebrew) — capture audio+video and route the siren speaker:
+#   brew install ffmpeg switchaudio-osx
+# Both are optional: without ffmpeg, capture is video-only via OpenCV; without
+# SwitchAudioSource, the siren plays on the system default output.

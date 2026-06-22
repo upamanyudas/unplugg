@@ -1,49 +1,60 @@
-import subprocess
+"""Polls hardware state and fires a single 'unsafe' callback when the Mac's
+state breaks from the baseline captured at activation.
+
+Safe baseline = plugged in, lid where it was when you activated. Unsafe =
+unplugged (if monitoring power) or lid moved past the threshold / closed (if
+monitoring the lid). Fires once per activation; deactivate + reactivate to arm
+again.
+"""
 import threading
 import time
-from typing import Callable
+
+import sensors
+
 
 class Monitor:
-    def __init__(self, on_trigger: Callable[[str], None], config: dict):
-        self.on_trigger = on_trigger
+    def __init__(self, on_unsafe, config: dict):
+        self.on_unsafe = on_unsafe
         self.config = config
-        self.running = False
-        self.thread = None
-        self.last_power_state = self._get_power_state()
-        self.last_lid_state = self._get_lid_state()
-
-    def _get_power_state(self) -> bool:
-        """True if plugged in (AC connected)."""
-        result = subprocess.run(["pmset", "-g", "ac"], capture_output=True, text=True)
-        return "AC Power" in result.stdout
-
-    def _get_lid_state(self) -> bool:
-        """True if lid closed (Clamshell Yes)."""
-        result = subprocess.run(["ioreg", "-r", "-k", "AppleClamshellState", "-d", "4"], capture_output=True, text=True)
-        return "Yes" in result.stdout
-
-    def _poll(self):
-        while self.running:
-            if self.config["activated"]:
-                current_power = self._get_power_state()
-                current_lid = self._get_lid_state()
-
-                if self.config["monitor_power"] and current_power != self.last_power_state and not current_power:
-                    self.on_trigger("power_unplugged")
-                self.last_power_state = current_power
-
-                if self.config["monitor_lid"] and current_lid != self.last_lid_state and current_lid:
-                    self.on_trigger("lid_closed")
-                self.last_lid_state = current_lid
-            time.sleep(2)  # Poll every 2s
+        self._thread = None
+        self._running = False
+        self._fired = False
+        self._baseline_angle = None
 
     def start(self):
-        if not self.running:
-            self.running = True
-            self.thread = threading.Thread(target=self._poll, daemon=True)
-            self.thread.start()
+        if self._running:
+            return
+        self._fired = False
+        self._baseline_angle = sensors.lid_angle()  # None on older Macs
+        self._running = True
+        self._thread = threading.Thread(target=self._poll, daemon=True)
+        self._thread.start()
 
     def stop(self):
-        self.running = False
-        if self.thread:
-            self.thread.join(timeout=1)
+        self._running = False
+        if self._thread:
+            self._thread.join(timeout=2)
+            self._thread = None
+
+    def _unsafe(self):
+        """Return a reason string if state is unsafe, else None."""
+        cfg = self.config
+        if cfg["monitor_power"] and not sensors.is_plugged_in():
+            return "power_unplugged"
+        if cfg["monitor_lid"]:
+            if self._baseline_angle is not None:
+                now = sensors.lid_angle()
+                if now is not None and abs(now - self._baseline_angle) > cfg["angle_threshold"]:
+                    return "screen_moved"
+            elif sensors.is_lid_closed():
+                return "screen_closed"
+        return None
+
+    def _poll(self):
+        while self._running:
+            if not self._fired:
+                reason = self._unsafe()
+                if reason:
+                    self._fired = True
+                    self.on_unsafe(reason)
+            time.sleep(1)

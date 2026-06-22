@@ -1,34 +1,85 @@
-from pyobjc_framework_AppKit import (
-    NSApplication, NSWindow, NSBorderlessWindowMask, NSBackingStoreBuffered,
-    NSFloatingWindowLevel, NSScreen, NSImageView, NSImage
+"""Fullscreen "Protected by unplugg" cover shown while armed.
+
+On the first key/mouse the Mac locks (the login window enforces the real
+password — we never handle the password ourselves; reinventing auth is a bug
+farm). The cover stays until monitoring is deactivated.
+
+Must be called on the main thread.
+"""
+from AppKit import (
+    NSWindow, NSScreen, NSColor, NSImage, NSImageView, NSTextField, NSView,
+    NSFont, NSEvent, NSApplication,
+    NSWindowStyleMaskBorderless, NSBackingStoreBuffered,
+    NSScreenSaverWindowLevel, NSImageScaleProportionallyUpOrDown,
+    NSEventMaskKeyDown, NSEventMaskLeftMouseDown, NSEventMaskRightMouseDown,
 )
-from pyobjc_framework_Foundation import NSBundle, NSAutoreleasePool
 
-def show_overlay():
-    """Show full-screen overlay with logo and text."""
-    pool = NSAutoreleasePool.alloc().init()
+from utils import asset_path, lock_screen
 
-    # Create window
-    frame = NSScreen.mainScreen().frame()
-    window = NSWindow.alloc().initWithContentRect_styleMask_backing_defer_(
-        frame, NSBorderlessWindowMask, NSBackingStoreBuffered, False
-    )
-    window.setLevel_(NSFloatingWindowLevel)
-    window.setOpaque_(False)
-    window.setBackgroundColor_(NSColor.colorWithCalibratedWhite_alpha_(0.7, 0.8))  # Semi-transparent
-    window.makeKeyAndOrderFront_(None)
-    window.setAcceptsMouseMovedEvents_(True)  # To detect input
+_window = None
+_monitor = None
 
-    # Add logo and text (simple NSImageView; use NSView for complex)
-    logo_view = NSImageView.alloc().initWithFrame_((100, 100, 200, 200))
-    logo_img = NSImage.alloc().initWithContentsOfFile_("assets/overlay_bg.png")  # Or composite
-    logo_view.setImage_(logo_img)
-    window.contentView().addSubview_(logo_view)
 
-    # Activate and wait for input (simplified; use event loop)
+def show():
+    global _window, _monitor
+    if _window:
+        return
+    frame = NSScreen.mainScreen().frame()  # ponytail: main screen only; loop NSScreen.screens() for multi-display
+    _window = NSWindow.alloc().initWithContentRect_styleMask_backing_defer_(
+        frame, NSWindowStyleMaskBorderless, NSBackingStoreBuffered, False)
+    _window.setLevel_(NSScreenSaverWindowLevel)
+    _window.setBackgroundColor_(NSColor.colorWithCalibratedWhite_alpha_(0.05, 1.0))
+    _window.setOpaque_(True)
+
+    content = NSView.alloc().initWithFrame_(frame)
+    w, h = frame.size.width, frame.size.height
+
+    logo = NSImageView.alloc().initWithFrame_(((w / 2 - 90, h / 2 - 20), (180, 180)))
+    img = NSImage.alloc().initWithContentsOfFile_(asset_path("logo.png"))
+    if img:
+        logo.setImage_(img)
+        logo.setImageScaling_(NSImageScaleProportionallyUpOrDown)
+    content.addSubview_(logo)
+
+    label = _label("Protected by unplugg", 34, (w / 2 - 300, h / 2 - 80, 600, 44))
+    hint = _label("Press any key or click, then sign in to resume.", 15,
+                  (w / 2 - 300, h / 2 - 120, 600, 24), dim=True)
+    content.addSubview_(label)
+    content.addSubview_(hint)
+    _window.setContentView_(content)
+
+    _window.makeKeyAndOrderFront_(None)
     NSApplication.sharedApplication().activateIgnoringOtherApps_(True)
 
-    # To dismiss on input: Would need runloop observer, but for demo, manual quit or timeout
-    # In full impl, add NSWindowDelegate to close on key/mouse
+    mask = NSEventMaskKeyDown | NSEventMaskLeftMouseDown | NSEventMaskRightMouseDown
+    _monitor = NSEvent.addLocalMonitorForEventsMatchingMask_handler_(mask, _on_input)
 
-    pool.drain()
+
+def hide():
+    global _window, _monitor
+    if _monitor:
+        NSEvent.removeMonitor_(_monitor)
+        _monitor = None
+    if _window:
+        _window.orderOut_(None)
+        _window = None
+
+
+def _on_input(event):
+    lock_screen()
+    return None  # swallow the event
+
+
+def _label(text, size, rect, dim=False):
+    (x, y, w, h) = rect
+    f = NSTextField.alloc().initWithFrame_(((x, y), (w, h)))
+    f.setStringValue_(text)
+    f.setBezeled_(False)
+    f.setEditable_(False)
+    f.setSelectable_(False)
+    f.setDrawsBackground_(False)
+    f.setAlignment_(2)  # centered
+    f.setFont_(NSFont.systemFontOfSize_(size))
+    white = 0.6 if dim else 1.0
+    f.setTextColor_(NSColor.colorWithCalibratedWhite_alpha_(white, 1.0))
+    return f

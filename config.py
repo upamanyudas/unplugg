@@ -1,46 +1,43 @@
+"""Settings persistence. Plain JSON in Application Support, file mode 0600.
+
+ponytail: tokens stored in plaintext (chmod 600), not encrypted. base64 is not
+encryption and pretends to be. Add keyring only if a threat model demands it.
+"""
 import json
 import os
-import base64  # Simple encryption demo
 from pathlib import Path
 
 CONFIG_DIR = Path.home() / "Library" / "Application Support" / "unplugg"
-CONFIG_DIR.mkdir(exist_ok=True)
 CONFIG_FILE = CONFIG_DIR / "config.json"
 
 DEFAULTS = {
     "activated": False,
-    "monitor_power": True,
-    "monitor_lid": True,
+    "monitor_power": True,       # alarm on power unplugged
+    "monitor_lid": True,         # alarm on screen closed / moved
+    "angle_threshold": 5,        # degrees of lid movement that counts as unsafe
     "play_sound": True,
-    "capture_media": True,
-    "telegram_destinations": [],  # List of {"name": str, "token": str (encrypted), "chat_id": str}
+    "send_location": True,       # attach a maps link (CoreLocation)
+    "capture_media": True,       # photos + 10s video
+    "record_audio": True,        # include mic audio in the video
+    "camera_index": 0,           # ffmpeg avfoundation video device index
+    "mic_index": 0,              # ffmpeg avfoundation audio device index
+    "speaker_name": "",          # output device for the siren ("" = system default)
+    "telegram_destinations": [],  # [{"name", "token", "chat_id"}]
     "show_overlay": True,
     "lock_device": False,
     "launch_at_login": False,
 }
 
-def encrypt_token(token: str) -> str:
-    return base64.b64encode(token.encode()).decode()  # Demo; use keyring in prod
-
-def decrypt_token(encrypted: str) -> str:
-    return base64.b64decode(encrypted.encode()).decode()
 
 def load_config() -> dict:
     if CONFIG_FILE.exists():
-        with open(CONFIG_FILE, "r") as f:
-            config = json.load(f)
-            # Decrypt tokens
-            for dest in config.get("telegram_destinations", []):
-                if "token" in dest:
-                    dest["token"] = decrypt_token(dest["token"])
-            return {**DEFAULTS, **config}
-    return DEFAULTS
+        with open(CONFIG_FILE) as f:
+            return {**DEFAULTS, **json.load(f)}
+    return dict(DEFAULTS)
+
 
 def save_config(config: dict) -> None:
-    # Encrypt tokens before save
-    save_config = config.copy()
-    for dest in save_config.get("telegram_destinations", []):
-        if "token" in dest:
-            dest["token"] = encrypt_token(dest["token"])
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     with open(CONFIG_FILE, "w") as f:
-        json.dump(save_config, f, indent=2)
+        json.dump(config, f, indent=2)
+    os.chmod(CONFIG_FILE, 0o600)

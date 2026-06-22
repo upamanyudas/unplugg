@@ -1,57 +1,69 @@
-import time
-import cv2
-from datetime import datetime
+"""Runs the configured response when the Mac becomes unsafe: siren, capture,
+location, Telegram, lock. Telegram always fires; the rest are toggles.
+
+Called from the monitor's background thread, so it can block freely.
+"""
+import subprocess
 from pathlib import Path
-from playsound import playsound
-from telegram import send_notification
-from utils import lock_screen
 
-class AlarmHandler:
-    def __init__(self, config):
-        self.config = config
-        self.media_dir = Path.home() / "Library" / "Application Support" / "unplugg" / "media"
-        self.media_dir.mkdir(exist_ok=True)
+import capture
+import devices
+import location
+import telegram
+from utils import asset_path, lock_screen
 
-    def trigger(self, event: str):
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        photo_path = None
-        video_path = None
+_siren = None          # afplay process
+_prev_volume = None    # system volume to restore
+_prev_speaker = None   # output device to restore
 
-        if self.config["play_sound"]:
-            try:
-                playsound("assets/siren.wav", block=False)  # Non-blocking
-            except Exception as e:
-                print(f"Sound play failed: {e}")
 
-        if self.config["capture_media"]:
-            cap = cv2.VideoCapture(0)
-            if cap.isOpened():
-                # Photos
-                for i in range(3):
-                    ret, frame = cap.read()
-                    if ret:
-                        p_path = self.media_dir / f"{event}_{timestamp}_{i}.jpg"
-                        cv2.imwrite(str(p_path), frame)
-                        photo_path = p_path  # Last one
+def trigger(config: dict, event: str):
+    if config["play_sound"]:
+        _start_siren(config.get("speaker_name", ""))
 
-                # Video
-                fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-                v_path = self.media_dir / f"{event}_{timestamp}.mp4"
-                out = cv2.VideoWriter(str(v_path), fourcc, 20.0, (640, 480))
-                start_time = time.time()
-                while (time.time() - start_time) < 10:
-                    ret, frame = cap.read()
-                    if ret:
-                        out.write(frame)
-                out.release()
-                video_path = v_path
-                cap.release()
+    photo = video = None
+    if config["capture_media"]:
+        photo, video = capture.capture(config)
 
-        send_notification(event, photo_path, video_path, self.config)
+    link = location.maps_link() if config["send_location"] else None
+    telegram.send_alert(event, config, photo=photo, video=video, location_url=link)
 
-        if self.config["show_overlay"]:
-            from overlay import show_overlay
-            show_overlay()
+    if config["lock_device"]:
+        lock_screen()
 
-        if self.config["lock_device"]:
-            lock_screen()
+
+def _start_siren(speaker):
+    """Play the siren at full volume on the chosen output, no matter the current
+    system volume. Saves prior volume + output device to restore on stop."""
+    global _siren, _prev_volume, _prev_speaker
+    siren = asset_path("siren.wav")
+    if not Path(siren).exists():
+        return
+
+    if speaker:
+        _prev_speaker = devices.current_speaker()
+        devices.set_speaker(speaker)
+
+    _prev_volume = _osascript("output volume of (get volume settings)")
+    _osascript("set volume output volume 100 without output muted")
+
+    # ponytail: afplay ships with macOS — no audio dependency to bundle.
+    _siren = subprocess.Popen(["afplay", "-v", "1", siren])
+
+
+def stop_siren():
+    global _siren, _prev_volume, _prev_speaker
+    if _siren and _siren.poll() is None:
+        _siren.terminate()
+    _siren = None
+    if _prev_volume is not None:
+        _osascript(f"set volume output volume {_prev_volume}")
+        _prev_volume = None
+    if _prev_speaker:
+        devices.set_speaker(_prev_speaker)
+        _prev_speaker = None
+
+
+def _osascript(script):
+    out = subprocess.run(["osascript", "-e", script], capture_output=True, text=True).stdout.strip()
+    return out or None

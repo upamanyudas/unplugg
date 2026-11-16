@@ -19,7 +19,7 @@ link, and pushes a Telegram alert — then optionally locks the Mac.
 | Siren | ✅ macOS `afplay`, forced to full volume on the chosen output |
 | Photo + 10s video **with audio** | ✅ ffmpeg (avfoundation); OpenCV video-only fallback |
 | Pick camera / mic / speaker | ✅ ffmpeg + SwitchAudioSource enumeration |
-| Permissions setup (camera/mic/location/accessibility) | ✅ Preferences → Permissions tab |
+| Permissions setup (camera/mic/location/accessibility) | ✅ Settings → Permissions |
 | Location in the alert | ✅ **CoreLocation** → Google Maps link |
 | "Turn on Find My + live link" | ❌ **No Apple API exists.** Replaced by the CoreLocation link above. |
 | Telegram alert with media | ✅ Bot API |
@@ -33,8 +33,8 @@ The lid-angle sensor is undocumented HID, so the app must run **un-sandboxed**
 
 ```
 main.py        entry point
-unplugg.py     menu-bar app (rumps) — essentials only: Activate, Preferences, About, Help, Quit
-preferences.py native Preferences window — every setting lives here
+unplugg.py     menu-bar app (rumps) — essentials only: Activate, Settings, About, Help, Quit
+preferences.py Settings window (System Settings style) — every setting lives here
 config.py      settings (JSON in ~/Library/Application Support/unplugg)
 sensors.py     power / lid-angle / clamshell readers (+ fallback)
 monitor.py     polling loop → fires one "unsafe" event
@@ -80,7 +80,7 @@ lid-angle slider only appears on Macs that have the sensor.
 1. Message **@BotFather** → `/newbot` → copy the **token**.
 2. Message your new bot anything, then open
    `https://api.telegram.org/bot<TOKEN>/getUpdates` and copy `chat.id`.
-3. Menu → **Preferences…** → Telegram destinations → **Add…**
+3. Menu → **Settings…** → **Alerts** → Telegram → **+**
    (the panel verifies the credentials before saving).
 
 ## Build the .app

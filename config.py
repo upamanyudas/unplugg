@@ -27,6 +27,7 @@ DEFAULTS = {
     "show_overlay": True,
     "lock_device": False,
     "launch_at_login": False,
+    "settings_pane": 0,          # reopen Settings on the last pane used
 }
 
 

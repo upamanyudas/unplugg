@@ -1,18 +1,17 @@
 """Native AppKit dialogs: Telegram setup panel, About, Help.
 
 ponytail: About reuses macOS's standard about panel (orderFrontStandardAboutPanel)
-instead of a hand-built window. Free, native, correct.
+instead of a hand-built window. Free, native, correct. Every dialog shows the
+app icon (unplugg.py sets it when running from source), so none load images.
 """
 from AppKit import (
-    NSAlert, NSView, NSTextField, NSSecureTextField, NSImage, NSImageView,
-    NSFont, NSColor, NSApplication, NSImageScaleProportionallyUpOrDown,
-    NSAlertFirstButtonReturn,
+    NSAlert, NSView, NSTextField, NSSecureTextField, NSFont, NSColor, NSApplication,
+    NSAlertFirstButtonReturn, NSAlertStyleCritical,
     NSLinkAttributeName, NSForegroundColorAttributeName, NSFontAttributeName,
 )
 from Foundation import NSMakeRect, NSAttributedString, NSURL
 
 import telegram
-from utils import asset_path
 
 TOKEN_HELP = ("How to get a bot token", "https://core.telegram.org/bots/features#botfather")
 CHAT_HELP = ("How to get your chat id", "https://docs.unplugg.app/chat-id")  # placeholder
@@ -23,9 +22,6 @@ def setup_telegram():
     alert = NSAlert.alloc().init()
     alert.setMessageText_("Add a Telegram destination")
     alert.setInformativeText_("Alerts (with photos and video) are sent here.")
-    icon = NSImage.alloc().initWithContentsOfFile_(asset_path("logo.png"))
-    if icon:
-        alert.setIcon_(icon)
     alert.addButtonWithTitle_("Save")
     alert.addButtonWithTitle_("Cancel")
 
@@ -84,18 +80,16 @@ def _link(text, url, rect):
 
 def _error(msg):
     a = NSAlert.alloc().init()
+    a.setAlertStyle_(NSAlertStyleCritical)
     a.setMessageText_("Setup failed")
     a.setInformativeText_(msg)
     a.runModal()
 
 
 def show_about():
-    img = NSImage.alloc().initWithContentsOfFile_(asset_path("about_logo.png"))
     options = {"ApplicationName": "unplugg",
                "Credits": NSAttributedString.alloc().initWithString_(
-                   "Safeguard your Mac in public spaces.")}
-    if img:
-        options["ApplicationIcon"] = img
+                   "Your Mac, guarded while you step away.")}
     NSApplication.sharedApplication().orderFrontStandardAboutPanelWithOptions_(options)
 
 
@@ -108,8 +102,5 @@ def show_help():
         "3. Click Activate before you step away.\n\n"
         "When the Mac is disturbed: it sirens, captures photo + video, sends a\n"
         "location link, and alerts Telegram — then optionally locks.")
-    img = NSImage.alloc().initWithContentsOfFile_(asset_path("about_logo.png"))
-    if img:
-        alert.setIcon_(img)
     alert.addButtonWithTitle_("Done")
     alert.runModal()

@@ -1,4 +1,8 @@
-# unplugg
+<p align="center">
+  <img src="assets/logo.png" width="160" alt="unplugg app icon">
+</p>
+<h1 align="center">unplugg</h1>
+<p align="center">Your Mac, guarded while you step away.</p>
 
 A menu-bar app that safeguards your Mac when you step away in a café or library.
 While armed, it watches the **power adapter** and the **screen**; if either is
@@ -42,8 +46,23 @@ overlay.py     fullscreen "Protected by unplugg" cover
 dialogs.py     native Telegram setup panel, About, Help
 loginitem.py   launch-at-login LaunchAgent
 utils.py       asset paths, screen lock
-assets/        placeholder images + siren — swap in your branded ones
+assets/        app icons, menu bar glyphs, siren
+_design/       icon sources + icons.py (rebuilds every icon)
 ```
+
+## Icons
+
+| File | Used by |
+|---|---|
+| `assets/logo.icns` | macOS 10.15–15 (refit to Apple's squircle grid) |
+| `assets/Assets.car` | macOS 26+ Liquid Glass: default, dark, clear, tinted |
+| `assets/menubar*.pdf` | menu bar: outline = idle, filled = armed, red = alarm |
+| `_design/telegram-avatar.png` | your alert bot: @BotFather → `/setuserpic` |
+| `_design/social-preview.png` | repo **Settings → Social preview** |
+
+Edit the logo, then run `python3 _design/icons.py` (needs Sketch, Xcode 26+,
+`brew install imagemagick librsvg`). The Liquid Glass source
+`_design/unplugg.icon` opens in Icon Composer.
 
 ## Run from source
 
@@ -71,8 +90,7 @@ pip install -r requirements.txt
 python setup.py py2app          # → dist/unplugg.app
 ```
 
-Drop a real `assets/logo.icns` in first (the placeholders are empty). Unsigned
-builds open via **right-click → Open** the first time.
+Unsigned builds open via **right-click → Open** the first time.
 
 ## Releasing (admin-initiated)
 

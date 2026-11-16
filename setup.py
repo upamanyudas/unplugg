@@ -7,10 +7,12 @@ place.
 from setuptools import setup
 
 APP = ["main.py"]
-DATA_FILES = [("assets", [
-    "assets/logo.png", "assets/about_logo.png",
-    "assets/overlay_bg.png", "assets/siren.wav",
-])]
+DATA_FILES = [
+    "assets/Assets.car",  # macOS 26+ Liquid Glass icon; older macOS uses logo.icns
+    ("assets", [
+        "assets/logo.png", "assets/menubar.pdf", "assets/menubar_armed.pdf", "assets/siren.wav",
+    ]),
+]
 
 OPTIONS = {
     "argv_emulation": False,
@@ -20,6 +22,7 @@ OPTIONS = {
         "CFBundleName": "unplugg",
         "CFBundleDisplayName": "unplugg",
         "CFBundleIdentifier": "com.unplugg.app",
+        "CFBundleIconName": "unplugg",       # icon inside Assets.car
         "CFBundleVersion": "1.0.0",
         "CFBundleShortVersionString": "1.0.0",
         "LSMinimumSystemVersion": "10.15",   # Catalina

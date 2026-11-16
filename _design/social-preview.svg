@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fbfbfd"/>
+      <stop offset="1" stop-color="#e6e6eb"/>
+    </linearGradient>
+  </defs>
+  <rect width="1280" height="640" fill="url(#bg)"/>
+  <!-- icons.py composites assets/logo.png at 60,60 (520px) -->
+  <g font-family="-apple-system, SF Pro Display, system-ui" fill="#1d1d1f">
+    <text x="604" y="318" font-size="128" font-weight="600" letter-spacing="-3">unplugg</text>
+    <text x="610" y="388" font-size="36" fill="#6e6e73">Your Mac, guarded while you step away.</text>
+  </g>
+</svg>

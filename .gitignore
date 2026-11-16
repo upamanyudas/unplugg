@@ -186,3 +186,4 @@ cython_debug/
 ai-prompt.md
 *.DS_Store
 AGENTS.md
+_design/unplugg.sketch

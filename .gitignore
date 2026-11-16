@@ -187,3 +187,5 @@ ai-prompt.md
 *.DS_Store
 AGENTS.md
 _design/unplugg.sketch
+
+_reference/design-sources.md

@@ -57,7 +57,7 @@ _design/       icon sources + icons.py (rebuilds every icon)
 | `assets/logo.icns` | macOS 10.15–15 (refit to Apple's squircle grid) |
 | `assets/Assets.car` | macOS 26+ Liquid Glass: default, dark, clear, tinted |
 | `assets/menubar*.pdf` | menu bar: outline = idle, filled = armed, red = alarm |
-| `_design/telegram-avatar.png` | your alert bot: @BotFather → `/setuserpic` |
+| `_design/telegram-avatar.png` | your alert bot: @BotFather → `/setuserpic`, send as a photo |
 | `_design/social-preview.png` | repo **Settings → Social preview** |
 
 Edit the logo, then run `python3 _design/icons.py` (needs Sketch, Xcode 26+,

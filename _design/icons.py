@@ -5,7 +5,7 @@ Needs Sketch, Xcode 26+ and `brew install imagemagick librsvg`.
 unplugg.sketch  → logo.png + logo.icns (macOS 10.15–15, refit to Apple's squircle grid;
                   the .sketch is kept out of git, so only its owner can re-run this step)
 unplugg.icon    → Assets.car           (macOS 26+, Liquid Glass light/dark/clear/tinted)
-menubar*.svg    → menubar*.pdf         (template images for the status item)
+menubar*.svg    → menubar*.pdf         (status item: idle + armed templates, red alarm)
 plus the Telegram bot avatar and GitHub social preview, written next to this file.
 """
 import json
@@ -85,7 +85,7 @@ def main():
             "--minimum-deployment-target", "26.0", "--output-partial-info-plist", "/dev/null")
         shutil.copy(tmp / "Assets.car", ASSETS)
 
-        for name in ("menubar", "menubar_armed"):
+        for name in ("menubar", "menubar_armed", "menubar_alarm"):
             run("rsvg-convert", "-f", "pdf", DESIGN / f"{name}.svg", "-o", ASSETS / f"{name}.pdf")
 
         # Telegram crops bot photos to a circle, so use the plate face edge to edge.

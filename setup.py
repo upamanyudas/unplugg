@@ -10,7 +10,8 @@ APP = ["main.py"]
 DATA_FILES = [
     "assets/Assets.car",  # macOS 26+ Liquid Glass icon; older macOS uses logo.icns
     ("assets", [
-        "assets/logo.png", "assets/menubar.pdf", "assets/menubar_armed.pdf", "assets/siren.wav",
+        "assets/logo.png", "assets/menubar.pdf", "assets/menubar_armed.pdf",
+        "assets/menubar_alarm.pdf", "assets/siren.wav",
     ]),
 ]
 

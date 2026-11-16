@@ -184,3 +184,5 @@ cython_debug/
 
 .DS_Store
 ai-prompt.md
+*.DS_Store
+AGENTS.md

@@ -5,6 +5,7 @@ import rumps
 from PyObjCTools import AppHelper
 
 import alarm
+import auth
 import dialogs
 import overlay
 import sensors
@@ -49,6 +50,8 @@ class UnpluggApp(rumps.App):
             if self.config["show_overlay"]:
                 overlay.show()
         else:
+            if not auth.require("Authenticate to deactivate unplugg"):
+                return
             self.config["activated"] = False
             self.monitor.stop()
             alarm.stop_siren()
@@ -64,6 +67,8 @@ class UnpluggApp(rumps.App):
         alarm.trigger(self.config, reason)
 
     def _quit(self, _):
+        if self.config["activated"] and not auth.require("Authenticate to quit unplugg"):
+            return
         self.monitor.stop()
         alarm.stop_siren()
         overlay.hide()

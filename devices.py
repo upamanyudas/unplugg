@@ -14,13 +14,35 @@ import re
 import shutil
 import subprocess
 
+BREW_BINS = ("/opt/homebrew/bin", "/usr/local/bin")
+
 
 def _find(name):
     """which() first, then the Homebrew bins — a GUI/.app launch has a minimal
     PATH that omits /opt/homebrew/bin, which is why enumeration came back empty."""
-    return shutil.which(name) or next(
-        (p for p in (f"/opt/homebrew/bin/{name}", f"/usr/local/bin/{name}")
-         if os.path.exists(p)), None)
+    hit = shutil.which(name)
+    if hit:
+        return hit
+    for d in BREW_BINS:
+        p = os.path.join(d, name)
+        if os.path.exists(p):
+            return p
+    return None
+
+
+def _env():
+    """Subprocess env with the Homebrew bins on PATH, so child tools resolve too."""
+    e = dict(os.environ)
+    e["PATH"] = ":".join(BREW_BINS) + ":" + e.get("PATH", "")
+    return e
+
+
+def _run(args, timeout=10):
+    try:
+        return subprocess.run(args, capture_output=True, text=True,
+                              env=_env(), timeout=timeout).stdout
+    except Exception:
+        return ""
 
 
 FFMPEG = _find("ffmpeg")
@@ -34,11 +56,15 @@ def _ffmpeg_devices():
     if _cache is not None:
         return _cache
     cameras, mics = [], []
-    if FFMPEG:
-        out = subprocess.run(
-            [FFMPEG, "-f", "avfoundation", "-list_devices", "true", "-i", ""],
-            capture_output=True, text=True, timeout=15,
-        ).stderr
+    ffmpeg = _find("ffmpeg")
+    if ffmpeg:
+        # device list goes to stderr; ffmpeg exits non-zero, which is expected
+        try:
+            out = subprocess.run(
+                [ffmpeg, "-f", "avfoundation", "-list_devices", "true", "-i", ""],
+                capture_output=True, text=True, env=_env(), timeout=15).stderr
+        except Exception:
+            out = ""
         target = None
         for line in out.splitlines():
             if "video devices" in line:
@@ -62,20 +88,18 @@ def microphones():
 
 
 def speakers():
-    if not SWITCH:
+    sw = _find("SwitchAudioSource")
+    if not sw:
         return []
-    out = subprocess.run([SWITCH, "-a", "-t", "output"],
-                         capture_output=True, text=True).stdout
-    return [l.strip() for l in out.splitlines() if l.strip()]
+    return [l.strip() for l in _run([sw, "-a", "-t", "output"]).splitlines() if l.strip()]
 
 
 def current_speaker():
-    if not SWITCH:
-        return None
-    return subprocess.run([SWITCH, "-c", "-t", "output"],
-                          capture_output=True, text=True).stdout.strip() or None
+    sw = _find("SwitchAudioSource")
+    return _run([sw, "-c", "-t", "output"]).strip() or None if sw else None
 
 
 def set_speaker(name):
-    if SWITCH and name:
-        subprocess.run([SWITCH, "-t", "output", "-s", name], capture_output=True)
+    sw = _find("SwitchAudioSource")
+    if sw and name:
+        _run([sw, "-t", "output", "-s", name])

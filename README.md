@@ -16,7 +16,7 @@ link, and pushes a Telegram alert — then optionally locks the Mac.
 | Power-unplugged detection | ✅ `pmset` |
 | Screen-moved detection (degrees) | ✅ on **2019+ Macs** via the hidden lid-angle sensor |
 | Screen on older Macs | ✅ falls back to closed/open detection (no degrees) |
-| Siren | ✅ macOS `afplay`, forced to full volume on the chosen output |
+| Siren | ✅ seamless NSSound loop at full volume on the chosen output, within ~0.25 s |
 | Photo + 10s video **with audio** | ✅ ffmpeg (avfoundation); OpenCV video-only fallback |
 | Pick camera / mic / speaker | ✅ AVFoundation + SwitchAudioSource; built-in camera and mic by default |
 | Permissions setup (camera/mic/location) | ✅ Settings → Permissions |

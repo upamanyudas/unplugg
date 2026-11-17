@@ -11,6 +11,8 @@ import time
 
 import sensors
 
+POLL = 0.2  # s between checks; the siren starts within this
+
 
 class Monitor:
     def __init__(self, on_unsafe, config: dict):
@@ -57,4 +59,4 @@ class Monitor:
                 if reason:
                     self._fired = True
                     self.on_unsafe(reason)
-            time.sleep(1)
+            time.sleep(POLL)

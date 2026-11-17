@@ -5,9 +5,11 @@ Where it's missing we fall back to the clamshell (closed/open) boolean, which is
 available on every Mac laptop. So the degree threshold is used when we can, and
 "lid closed" detection everywhere else.
 
-ponytail: shells out to pmset/ioreg instead of binding IOKit power APIs — two
-process spawns per poll is nothing at a 1s interval, and the strings are stable.
+Power is one IOKit call via ctypes (~0.1 ms), so the monitor can poll 5×/s.
+ponytail: the clamshell fallback (older Macs) still shells out to ioreg — one
+spawn per poll beats binding IORegistry property reads.
 """
+import ctypes
 import subprocess
 
 try:
@@ -19,25 +21,25 @@ except Exception:  # library missing or import failed
         return None
 
 
+_IOKIT = ctypes.CDLL("/System/Library/Frameworks/IOKit.framework/IOKit")
+_IOKIT.IOPSGetTimeRemainingEstimate.restype = ctypes.c_double
+UNLIMITED = -2.0  # kIOPSTimeRemainingUnlimited (IOPowerSources.h): on external power
+
+
 def has_angle_sensor() -> bool:
     return _HAS_ANGLE
-
-
-def _battery() -> str:
-    return subprocess.run(["pmset", "-g", "batt"], capture_output=True, text=True).stdout
 
 
 def is_laptop() -> bool:
     """Every MacBook lists an InternalBattery; desktops have none. hw.model can't
     tell: since M2, MacBooks and desktops are both "MacNN,N"."""
-    return "InternalBattery" in _battery()
+    out = subprocess.run(["pmset", "-g", "batt"], capture_output=True, text=True).stdout
+    return "InternalBattery" in out
 
 
 def is_plugged_in() -> bool:
-    """True if running on AC power. `pmset -g batt` prints "Now drawing from
-    'AC Power'" when plugged — `pmset -g ac` does NOT contain that string, which
-    was the false "plug in first" bug."""
-    return "AC Power" in _battery()
+    """True on AC power, i.e. no time limit on the power source."""
+    return _IOKIT.IOPSGetTimeRemainingEstimate() == UNLIMITED
 
 
 def lid_angle():

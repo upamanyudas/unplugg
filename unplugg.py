@@ -39,6 +39,7 @@ class UnpluggApp(rumps.App):
         self.config = load_config()
         self.config["activated"] = False  # never boot already-armed
         self.monitor = Monitor(self._on_unsafe, self.config)
+        AppHelper.callLater(1, alarm.prepare)  # after launch, so the icon shows first
         self.toggle = rumps.MenuItem("Activate", callback=self._toggle_activate)
         self.menu = [
             self.toggle,
@@ -100,6 +101,8 @@ class UnpluggApp(rumps.App):
         self.template = state != "alarm"
 
     def _show_alarm(self):
+        if self.config["play_sound"]:
+            alarm.start_siren(self.config["speaker_name"])
         self._set_state("alarm")
         if self.config["show_overlay"]:
             overlay.show(self._unlock, alarm=True)

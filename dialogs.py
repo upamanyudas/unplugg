@@ -7,7 +7,8 @@ Every dialog passes the app icon explicitly. AppKit's default is the bundle's
 icon, which from source is Python's rocket, not the one unplugg.py sets.
 """
 from AppKit import (
-    NSAlert, NSView, NSTextField, NSSecureTextField, NSFont, NSColor, NSApplication,
+    NSAlert, NSView, NSTextField, NSSecureTextField, NSFont, NSColor, NSApplication, NSMenu,
+    NSMenuItem,
     NSAlertFirstButtonReturn, NSAlertStyleCritical,
     NSLinkAttributeName, NSForegroundColorAttributeName, NSFontAttributeName,
 )
@@ -17,6 +18,22 @@ import telegram
 
 TOKEN_HELP = ("How to get a bot token", "https://core.telegram.org/bots/features#botfather")
 CHAT_HELP = ("How to get your chat id", "https://docs.unplugg.app/chat-id")  # placeholder
+EDIT_ITEMS = [("Undo", "undo:", "z"), ("Redo", "redo:", "Z"), ("Cut", "cut:", "x"),
+              ("Copy", "copy:", "c"), ("Paste", "paste:", "v"), ("Select All", "selectAll:", "a")]
+
+
+def install_edit_menu():
+    """Cmd+X/C/V/A only reach text fields through the main menu, and a menu bar
+    app has none, so paste into the Telegram fields did nothing."""
+    edit = NSMenu.alloc().initWithTitle_("Edit")
+    for title, action, key in EDIT_ITEMS:
+        edit.addItemWithTitle_action_keyEquivalent_(title, action, key)
+    item = NSMenuItem.alloc().init()
+    item.setSubmenu_(edit)
+    bar = NSMenu.alloc().init()
+    bar.addItem_(NSMenuItem.alloc().init())  # slot 0 is always the app menu
+    bar.addItem_(item)
+    NSApplication.sharedApplication().setMainMenu_(bar)
 
 
 def alert(title, text, *buttons):

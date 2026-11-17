@@ -29,6 +29,7 @@ class UnpluggApp(rumps.App):
         if not getattr(sys, "frozen", False):  # from source: our icon in alerts, not Python's
             NSApplication.sharedApplication().setApplicationIconImage_(
                 NSImage.alloc().initWithContentsOfFile_(asset_path("logo.png")))
+        dialogs.install_edit_menu()
         self.config = load_config()
         self.config["activated"] = False  # never boot already-armed
         self.monitor = Monitor(self._on_unsafe, self.config)

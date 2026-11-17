@@ -1,5 +1,5 @@
-"""Runs the configured response when the Mac becomes unsafe: siren, capture,
-location, Telegram, lock. Telegram always fires; the rest are toggles.
+"""Runs the configured response when the Mac becomes unsafe: siren, lock,
+capture, location, Telegram. Telegram always fires; the rest are toggles.
 
 The siren runs on the main thread (NSSound and NSAppleScript are main-thread
 classes); trigger() runs on the monitor's background thread and can block.
@@ -37,15 +37,15 @@ def prepare():
 
 
 def trigger(config: dict, event: str):
+    if config["lock_device"]:
+        lock_screen()  # first: capture and upload take ~20 s
+
     photo = video = None
     if config["capture_media"]:
         photo, video = capture.capture(config)
 
     link = location.maps_link() if config["send_location"] else None
     telegram.send_alert(event, config, photo=photo, video=video, location_url=link)
-
-    if config["lock_device"]:
-        lock_screen()
 
 
 def start_siren(speaker):

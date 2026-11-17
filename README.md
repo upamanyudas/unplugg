@@ -78,10 +78,10 @@ lid-angle slider only appears on Macs that have the sensor.
 
 ### Telegram in 60 seconds
 1. Message **@BotFather** → `/newbot` → copy the **token**.
-2. Message your new bot anything, then open
-   `https://api.telegram.org/bot<TOKEN>/getUpdates` and copy `chat.id`.
-3. Menu → **Settings…** → **Alerts** → Telegram → **+**
-   (the panel verifies the credentials before saving).
+2. Message your new bot anything.
+3. Menu → **Settings…** → **Alerts** → Telegram → **+**, paste the token,
+   click **Auto-detect** for the chat id, then **Send Test Message**.
+   Save checks the details with Telegram first.
 
 ## Build the .app
 

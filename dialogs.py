@@ -8,16 +8,15 @@ icon, which from source is Python's rocket, not the one unplugg.py sets.
 """
 from AppKit import (
     NSAlert, NSView, NSTextField, NSSecureTextField, NSFont, NSColor, NSApplication, NSMenu,
-    NSMenuItem,
+    NSMenuItem, NSButton,
     NSAlertFirstButtonReturn, NSAlertStyleCritical,
     NSLinkAttributeName, NSForegroundColorAttributeName, NSFontAttributeName,
 )
-from Foundation import NSMakeRect, NSAttributedString, NSURL
+from Foundation import NSMakeRect, NSAttributedString, NSObject, NSURL
 
 import telegram
 
 TOKEN_HELP = ("How to get a bot token", "https://core.telegram.org/bots/features#botfather")
-CHAT_HELP = ("How to get your chat id", "https://docs.unplugg.app/chat-id")  # placeholder
 EDIT_ITEMS = [("Undo", "undo:", "z"), ("Redo", "redo:", "Z"), ("Cut", "cut:", "x"),
               ("Copy", "copy:", "c"), ("Paste", "paste:", "v"), ("Select All", "selectAll:", "a")]
 
@@ -57,38 +56,84 @@ def _icon():
     return NSApplication.sharedApplication().applicationIconImage()
 
 
+class _Setup(NSObject):
+    """Target for the setup panel's buttons; setup_telegram attaches the fields."""
+
+    def detect_(self, _):
+        chat = telegram.find_chat_id(_value(self.token))
+        if chat:
+            self.chat.setStringValue_(chat)
+            self.controlTextDidChange_(None)
+        self.hint.setStringValue_("Found your chat." if chat else
+                                  "No messages yet. Message your bot, then try again.")
+
+    def test_(self, _):
+        err = telegram.send_test(_value(self.token), _value(self.chat))
+        self.status.setStringValue_(err or "Sent. Check Telegram.")
+
+    def controlTextDidChange_(self, _):
+        has_token = bool(_value(self.token))
+        self.detect.setEnabled_(has_token)
+        self.test.setEnabled_(has_token and bool(_value(self.chat)))
+
+
 def setup_telegram():
     """Show the multi-field setup panel. Returns a destination dict or None."""
     panel = _alert("Add a Telegram destination", "Alerts (with photos and video) are sent here.",
                    "Save", "Cancel")
 
-    view = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, 360, 250))
-    name = _field(view, 210, "Destination name", "e.g. My phone")
-    token = _field(view, 120, "Telegram bot token", "123456:ABC-DEF...", help=TOKEN_HELP, secure=True)
-    chat = _field(view, 30, "Chat id", "e.g. 987654321", help=CHAT_HELP)
+    ui = _Setup.alloc().init()
+    view = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, 360, 270))
+    name = _field(view, 230, "Destination name", "e.g. My phone")
+    ui.token = _field(view, 160, "Telegram bot token", "123456:ABC-DEF...", help=TOKEN_HELP,
+                      secure=True)
+    ui.chat = _field(view, 90, "Chat id", "e.g. 987654321", width=250)
+    ui.detect = _button(view, "Auto-detect", ui, "detect:", (258, 88))
+    ui.hint = _text("Send your bot any message, then click Auto-detect.",
+                    NSMakeRect(0, 70, 360, 16), 11, color=NSColor.secondaryLabelColor())
+    ui.test = _button(view, "Send Test Message", ui, "test:", (0, 26))
+    x = ui.test.frame().size.width + 8
+    ui.status = _text("", NSMakeRect(x, 31, 360 - x, 16), 11, color=NSColor.secondaryLabelColor())
+    for v in (ui.hint, ui.status):
+        view.addSubview_(v)
+    for f in (ui.token, ui.chat):
+        f.setDelegate_(ui)  # enable the buttons as the fields fill in
+    ui.controlTextDidChange_(None)
     panel.setAccessoryView_(view)
     panel.window().setInitialFirstResponder_(name)  # alert builds its panel lazily
 
     if panel.runModal() != NSAlertFirstButtonReturn:
         return None
-    n, t, c = name.stringValue().strip(), token.stringValue().strip(), chat.stringValue().strip()
+    n, t, c = _value(name), _value(ui.token), _value(ui.chat)
     if not (n and t and c):
         return None
-    if not telegram.test_credentials(t, c):
-        _error("Couldn't reach Telegram with those details. Check the token and chat id.")
+    err = telegram.check(t, c)
+    if err:
+        _error(f"Telegram says: {err}")
         return None
     return {"name": n, "token": t, "chat_id": c}
 
 
-def _field(parent, y, title, placeholder, help=None, secure=False):
+def _value(field):
+    return field.stringValue().strip()
+
+
+def _field(parent, y, title, placeholder, help=None, secure=False, width=360):
     parent.addSubview_(_text(title, NSMakeRect(0, y + 22, 360, 18), 13, bold=True))
     cls = NSSecureTextField if secure else NSTextField
-    tf = cls.alloc().initWithFrame_(NSMakeRect(0, y, 360, 22))
+    tf = cls.alloc().initWithFrame_(NSMakeRect(0, y, width, 22))
     tf.setPlaceholderString_(placeholder)
     parent.addSubview_(tf)
     if help:
         parent.addSubview_(_link(help[0], help[1], NSMakeRect(0, y - 18, 360, 16)))
     return tf
+
+
+def _button(parent, title, target, action, origin):
+    b = NSButton.buttonWithTitle_target_action_(title, target, action)
+    b.setFrameOrigin_(origin)
+    parent.addSubview_(b)
+    return b
 
 
 def _text(s, rect, size, bold=False, color=None):

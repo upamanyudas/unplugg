@@ -44,14 +44,33 @@ def _send_file(url, chat, field, path):
             _post(url, {"chat_id": chat}, files={field: f})
 
 
-def test_credentials(token: str, chat_id: str) -> bool:
-    """Used by the setup panel to validate before saving."""
+# ---- setup panel helpers ---------------------------------------------------
+def _call(token, method, **data):
+    """One Bot API call -> (result, None) or (None, Telegram's reason)."""
     try:
-        r = requests.post(
-            f"https://api.telegram.org/bot{token}/sendMessage",
-            data={"chat_id": chat_id, "text": "✅ unplugg connected."},
-            timeout=15,
-        )
-        return r.ok
-    except requests.RequestException:
-        return False
+        r = requests.post(f"https://api.telegram.org/bot{token}/{method}", data=data,
+                          timeout=15).json()
+    except (requests.RequestException, ValueError):
+        return None, "Couldn't reach Telegram. Check your internet connection."
+    return (r["result"], None) if r.get("ok") else (None, r.get("description", "Unknown error"))
+
+
+def find_chat_id(token):
+    """Chat id of the newest message sent to the bot, or None (Uptime Kuma's Auto Get)."""
+    updates, _ = _call(token, "getUpdates")
+    for u in reversed(updates or []):
+        post = u.get("message") or u.get("channel_post")
+        if post:
+            return str(post["chat"]["id"])
+    return None
+
+
+def check(token, chat_id):
+    """Can this bot reach this chat? None if yes, else why not. Sends nothing."""
+    return _call(token, "getChat", chat_id=chat_id)[1]
+
+
+def send_test(token, chat_id):
+    """None once the test message landed, else why it didn't."""
+    return _call(token, "sendMessage", chat_id=chat_id,
+                 text="✅ unplugg test: alerts will arrive here.")[1]

@@ -3,7 +3,7 @@
 Primary path is ffmpeg's avfoundation input — it records the chosen camera and
 microphone into one mp4 with audio, which OpenCV alone cannot do. Stills are
 extracted from that recording so the camera is opened once. If ffmpeg is missing
-or errors, we fall back to OpenCV for a silent, default-camera video.
+or errors, we fall back to OpenCV for a silent video from the same camera.
 """
 import subprocess
 from datetime import datetime
@@ -25,18 +25,18 @@ def capture(config, photos: int = 3, video_seconds: int = 10):
     media = _media_dir(config)
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     video = media / f"{stamp}.mp4"
+    cam = devices.camera(config.get("camera", ""))
 
-    if devices.FFMPEG and _ffmpeg_record(config, video, video_seconds):
+    if devices.FFMPEG and _ffmpeg_record(config, cam, video, video_seconds):
         photo = _ffmpeg_stills(media, video, stamp, photos)
         return photo, video
-    return _opencv_fallback(media, stamp, video, photos, video_seconds)
+    return _opencv_fallback(media, stamp, video, photos, video_seconds, devices.opencv_index(cam))
 
 
-def _ffmpeg_record(config, video, seconds) -> bool:
-    vid = config.get("camera_index", 0)
-    aud = config.get("mic_index", 0) if config.get("record_audio", True) else "none"
+def _ffmpeg_record(config, cam, video, seconds) -> bool:
+    mic = devices.microphone(config.get("mic", "")) if config.get("record_audio", True) else None
     cmd = [devices.FFMPEG, "-y", "-f", "avfoundation", "-framerate", "30",
-           "-i", f"{vid}:{aud}", "-t", str(seconds),
+           "-i", f"{cam}:{mic or 'none'}", "-t", str(seconds),
            "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(video)]
     try:
         r = subprocess.run(cmd, capture_output=True, timeout=seconds + 25)
@@ -54,11 +54,11 @@ def _ffmpeg_stills(media, video, stamp, photos):
     return shots[-1] if shots else None
 
 
-def _opencv_fallback(media, stamp, video, photos, seconds):
+def _opencv_fallback(media, stamp, video, photos, seconds, index):
     # ponytail: video-only fallback; audio needs ffmpeg, which we'd have used.
     import time
     import cv2
-    cam = cv2.VideoCapture(0)
+    cam = cv2.VideoCapture(index)
     if not cam.isOpened():
         return None, None
     photo = None

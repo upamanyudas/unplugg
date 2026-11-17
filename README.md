@@ -18,7 +18,7 @@ link, and pushes a Telegram alert — then optionally locks the Mac.
 | Screen on older Macs | ✅ falls back to closed/open detection (no degrees) |
 | Siren | ✅ macOS `afplay`, forced to full volume on the chosen output |
 | Photo + 10s video **with audio** | ✅ ffmpeg (avfoundation); OpenCV video-only fallback |
-| Pick camera / mic / speaker | ✅ ffmpeg + SwitchAudioSource enumeration |
+| Pick camera / mic / speaker | ✅ AVFoundation + SwitchAudioSource; built-in camera and mic by default |
 | Permissions setup (camera/mic/location/accessibility) | ✅ Settings → Permissions |
 | Location in the alert | ✅ **CoreLocation** → Google Maps link |
 | "Turn on Find My + live link" | ❌ **No Apple API exists.** Replaced by the CoreLocation link above. |

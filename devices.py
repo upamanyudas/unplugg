@@ -1,20 +1,21 @@
 """Enumerate capture/output devices for the Preferences pickers.
 
-Cameras + microphones come from ffmpeg's avfoundation device list; the index we
-return is the same index ffmpeg/capture.py feeds back in. Speakers come from
-SwitchAudioSource. Everything degrades to an empty list if the tool is missing,
-so the UI just shows "System default".
+Cameras + microphones come from AVFoundation, by name. ffmpeg's avfoundation
+input matches devices by name, and names survive an iPhone or AirPods showing
+up; list indices shift (index 0 was the iPhone mic). Speakers come from
+SwitchAudioSource; without it the list is empty and the UI shows "System default".
 
-ponytail: shell out to the two CLIs already installed instead of binding
-AVFoundation + CoreAudio in PyObjC. Enumeration runs once when Preferences opens
-— a subprocess is nothing, and it dodges ~100 lines of untested struct marshaling.
+ponytail: shell out to SwitchAudioSource instead of binding CoreAudio — it
+dodges ~100 lines of untested struct marshaling for a list of names.
 """
 import os
-import re
 import shutil
 import subprocess
 
+from AVFoundation import AVCaptureDevice, AVMediaTypeAudio, AVMediaTypeMuxed, AVMediaTypeVideo
+
 BREW_BINS = ("/opt/homebrew/bin", "/usr/local/bin")
+BUILT_IN = int.from_bytes(b"bltn", "big")  # kIOAudioDeviceTransportTypeBuiltIn
 
 
 def _find(name):
@@ -48,43 +49,39 @@ def _run(args, timeout=10):
 FFMPEG = _find("ffmpeg")
 SWITCH = _find("SwitchAudioSource")
 
-_cache = None  # (cameras, mics)
-
-
-def _ffmpeg_devices():
-    global _cache
-    if _cache is not None:
-        return _cache
-    cameras, mics = [], []
-    ffmpeg = _find("ffmpeg")
-    if ffmpeg:
-        # device list goes to stderr; ffmpeg exits non-zero, which is expected
-        try:
-            out = subprocess.run(
-                [ffmpeg, "-f", "avfoundation", "-list_devices", "true", "-i", ""],
-                capture_output=True, text=True, env=_env(), timeout=15).stderr
-        except Exception:
-            out = ""
-        target = None
-        for line in out.splitlines():
-            if "video devices" in line:
-                target = cameras
-            elif "audio devices" in line:
-                target = mics
-            elif target is not None:
-                m = re.search(r"\[(\d+)\]\s+(.*)$", line)
-                if m:
-                    target.append(m.group(2).strip())
-    _cache = (cameras, mics)
-    return _cache
+def _capture(media):
+    return list(AVCaptureDevice.devicesWithMediaType_(media))
 
 
 def cameras():
-    return _ffmpeg_devices()[0]
+    return [d.localizedName() for d in _capture(AVMediaTypeVideo)]
 
 
 def microphones():
-    return _ffmpeg_devices()[1]
+    return [d.localizedName() for d in _capture(AVMediaTypeAudio)]
+
+
+def camera(name):
+    return _pick(_capture(AVMediaTypeVideo), name)
+
+
+def microphone(name):
+    return _pick(_capture(AVMediaTypeAudio), name)
+
+
+def _pick(devs, name):
+    """`name` while it's connected, else this Mac's built-in device ("" = built-in),
+    so a thief pulling the dock cable can't leave the alarm without a camera."""
+    if name in [d.localizedName() for d in devs]:
+        return name
+    built_in = [d for d in devs if d.transportType() == BUILT_IN] or devs
+    return built_in[0].localizedName() if built_in else None
+
+
+def opencv_index(name):
+    """OpenCV numbers cameras by sorted uniqueID, not list order (cap_avfoundation_mac.mm)."""
+    devs = sorted(_capture(AVMediaTypeVideo) + _capture(AVMediaTypeMuxed), key=lambda d: d.uniqueID())
+    return next((i for i, d in enumerate(devs) if d.localizedName() == name), 0)
 
 
 def speakers():

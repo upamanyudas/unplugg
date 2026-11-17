@@ -19,8 +19,8 @@ DEFAULTS = {
     "send_location": True,       # attach a maps link (CoreLocation)
     "capture_media": True,       # photos + 10s video
     "record_audio": True,        # include mic audio in the video
-    "camera_index": 0,           # ffmpeg avfoundation video device index
-    "mic_index": 0,              # ffmpeg avfoundation audio device index
+    "camera": "",                # capture device names; "" = this Mac's built-in
+    "mic": "",
     "speaker_name": "",          # output device for the siren ("" = system default)
     "media_dir": str(Path.home() / "Pictures" / "unplugg"),  # where photos/video are saved
     "telegram_destinations": [],  # [{"name", "token", "chat_id"}]

@@ -81,11 +81,11 @@ class _Prefs(NSObject):
         save_config(self.cfg)
 
     def cameraPick_(self, sender):
-        self.cfg["camera_index"] = sender.indexOfSelectedItem()
+        self.cfg["camera"] = sender.titleOfSelectedItem()
         save_config(self.cfg)
 
     def micPick_(self, sender):
-        self.cfg["mic_index"] = sender.indexOfSelectedItem()
+        self.cfg["mic"] = sender.titleOfSelectedItem()
         save_config(self.cfg)
 
     def speakerPick_(self, sender):
@@ -206,14 +206,18 @@ def _alerts_page(ctrl, view, y):
 
 
 def _devices_page(ctrl, view, y):
-    cam = _popup(ctrl, devices.cameras() or ["Default camera"], ctrl.cfg["camera_index"],
-                 "cameraPick:")
-    mic = _popup(ctrl, devices.microphones() or ["Default microphone"], ctrl.cfg["mic_index"],
-                 "micPick:")
+    cams = devices.cameras() or ["Default camera"]
+    mics = devices.microphones() or ["Default microphone"]
+    cam = _popup(ctrl, cams, _index(cams, devices.camera(ctrl.cfg["camera"])), "cameraPick:")
+    mic = _popup(ctrl, mics, _index(mics, devices.microphone(ctrl.cfg["mic"])), "micPick:")
     y = _group(view, y, "Capture", [("Camera", cam), ("Microphone", mic)])
     spk = ["System default"] + devices.speakers()
-    sel = spk.index(ctrl.cfg["speaker_name"]) if ctrl.cfg["speaker_name"] in spk else 0
+    sel = _index(spk, ctrl.cfg["speaker_name"])
     return _group(view, y, "Siren", [("Speaker", _popup(ctrl, spk, sel, "speakerPick:"))])
+
+
+def _index(items, name):
+    return items.index(name) if name in items else 0
 
 
 def _permissions_page(ctrl, view, y):

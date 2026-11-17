@@ -97,10 +97,19 @@ So it's a one-time phone setting (also under **?** in the setup panel):
 
 ```bash
 pip install -r requirements.txt
+
+# dev: a real .app that runs your live source files, so Touch ID and
+# permission prompts show unplugg's icon and name instead of Python's
+python setup.py py2app -A && open dist/unplugg.app
+
+# release: standalone app
+rm -rf build dist
 python setup.py py2app          # → dist/unplugg.app
 ```
 
-Unsigned builds open via **right-click → Open** the first time.
+The "Modules not found" list at the end is normal: optional imports inside
+bundled libraries. A downloaded unsigned build opens via **System Settings ›
+Privacy & Security › Open Anyway** (macOS 15+ dropped right-click → Open).
 
 ## Releasing (admin-initiated)
 

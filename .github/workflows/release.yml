@@ -51,4 +51,4 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 # Notarization (optional): add a "codesign --deep --sign <Developer ID>" step and
 # an "xcrun notarytool submit" step before zipping, using APPLE_ID / TEAM_ID /
-# APP_PASSWORD secrets. Unsigned apps run after right-click > Open.
+# APP_PASSWORD secrets. Unsigned apps open via Privacy & Security > Open Anyway.

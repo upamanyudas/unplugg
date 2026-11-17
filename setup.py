@@ -19,6 +19,7 @@ OPTIONS = {
     "argv_emulation": False,
     "iconfile": "assets/logo.icns",
     "packages": ["rumps", "requests", "cv2", "pybooklid"],
+    "no_report_missing_conditional_import": True,  # ~40 lines of harmless "missing" noise
     "plist": {
         "CFBundleName": "unplugg",
         "CFBundleDisplayName": "unplugg",
@@ -40,6 +41,5 @@ OPTIONS = {
 setup(
     app=APP,
     data_files=DATA_FILES,
-    options={"py2app": OPTIONS},
-    setup_requires=["py2app"],
+    options={"py2app": OPTIONS},  # py2app comes from requirements.txt; setup_requires is deprecated
 )

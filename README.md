@@ -78,10 +78,12 @@ lid-angle slider only appears on Macs that have the sensor.
 
 ### Telegram in 60 seconds
 1. Message **@BotFather** → `/newbot` → copy the **token**.
-2. Message your new bot anything.
-3. Menu → **Settings…** → **Alerts** → Telegram → **+**, paste the token,
-   click **Auto-detect** for the chat id, then **Send Test Message**.
-   Save checks the details with Telegram first.
+2. Menu → **Settings…** → **Alerts** → Telegram → **+**, paste the token.
+3. Click **Auto-detect**, then send your bot any message within 30 s.
+4. **Send Test Message**, then **Save** (it checks the details with Telegram).
+
+Use a bot only unplugg talks to: if another app polls the same bot, it eats
+the messages and Auto-detect can't see them.
 
 ### Make alerts loud on your phone
 Bots can't mark a message high priority; the Bot API only has a *silent* flag.

@@ -49,20 +49,24 @@ def _call(token, method, **data):
     """One Bot API call -> (result, None) or (None, Telegram's reason)."""
     try:
         r = requests.post(f"https://api.telegram.org/bot{token}/{method}", data=data,
-                          timeout=15).json()
+                          timeout=15 + data.get("timeout", 0)).json()
     except (requests.RequestException, ValueError):
         return None, "Couldn't reach Telegram. Check your internet connection."
     return (r["result"], None) if r.get("ok") else (None, r.get("description", "Unknown error"))
 
 
-def find_chat_id(token):
-    """Chat id of the newest message sent to the bot, or None (Uptime Kuma's Auto Get)."""
-    updates, _ = _call(token, "getUpdates")
+def find_chat_id(token, wait=30):
+    """Chat id of the newest message to the bot -> (id, None) or (None, why not).
+    Long-polls up to `wait` s, so the message can be sent after clicking (Uptime
+    Kuma's Auto Get only looks once, and Telegram drops updates after 24 h)."""
+    updates, err = _call(token, "getUpdates", timeout=wait)
+    if err and err.startswith("Conflict"):  # another app polls this bot and eats its messages
+        err = "Another app reads this bot's messages. Give unplugg its own bot, or type the chat id."
     for u in reversed(updates or []):
         post = u.get("message") or u.get("channel_post")
         if post:
-            return str(post["chat"]["id"])
-    return None
+            return str(post["chat"]["id"]), None
+    return None, err or "No message arrived. Send your bot a message, then try again."
 
 
 def check(token, chat_id):

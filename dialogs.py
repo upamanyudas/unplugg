@@ -6,6 +6,8 @@ instead of a hand-built window. Free, native, correct.
 Every dialog passes the app icon explicitly. AppKit's default is the bundle's
 icon, which from source is Python's rocket, not the one unplugg.py sets.
 """
+import threading
+
 from AppKit import (
     NSAlert, NSView, NSTextField, NSSecureTextField, NSFont, NSColor, NSApplication, NSMenu,
     NSMenuItem, NSButton, NSBezelStyleHelpButton,
@@ -13,6 +15,7 @@ from AppKit import (
     NSLinkAttributeName, NSForegroundColorAttributeName, NSFontAttributeName,
 )
 from Foundation import NSMakeRect, NSAttributedString, NSObject, NSURL
+from PyObjCTools import AppHelper
 
 import telegram
 
@@ -72,12 +75,19 @@ class _Setup(NSObject):
     """Target for the setup panel's buttons; setup_telegram attaches the fields."""
 
     def detect_(self, _):
-        chat = telegram.find_chat_id(_value(self.token))
+        self.detect.setEnabled_(False)
+        self.hint.setStringValue_("Waiting… send your bot any message now.")
+        token = _value(self.token)
+        # long poll off the main thread so the panel stays responsive
+        threading.Thread(target=lambda: AppHelper.callAfter(
+            self.detected_, telegram.find_chat_id(token)), daemon=True).start()
+
+    def detected_(self, result):
+        chat, err = result
         if chat:
             self.chat.setStringValue_(chat)
-            self.controlTextDidChange_(None)
-        self.hint.setStringValue_("Found your chat." if chat else
-                                  "No messages yet. Message your bot, then try again.")
+        self.hint.setStringValue_("Found your chat." if chat else err)
+        self.controlTextDidChange_(None)
 
     def test_(self, _):
         err = telegram.send_test(_value(self.token), _value(self.chat))
@@ -104,7 +114,7 @@ def setup_telegram():
                       secure=True)
     ui.chat = _field(view, 90, "Chat id", "e.g. 987654321", width=250)
     ui.detect = _button(view, "Auto-detect", ui, "detect:", (258, 88))
-    ui.hint = _text("Send your bot any message, then click Auto-detect.",
+    ui.hint = _text("Click Auto-detect, then send your bot any message.",
                     NSMakeRect(0, 70, 360, 16), 11, color=NSColor.secondaryLabelColor())
     ui.test = _button(view, "Send Test Message", ui, "test:", (0, 34))
     x = ui.test.frame().size.width + 8

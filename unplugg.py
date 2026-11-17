@@ -45,9 +45,9 @@ class UnpluggApp(rumps.App):
     def _toggle_activate(self, sender):
         if not self.config["activated"]:
             if self.config["monitor_power"] and not sensors.is_plugged_in():
-                rumps.alert("Plug in first", "Your MacBook should be plugged to power before "
-                            "you can activate the alarm. Alternatively, turn off "
-                            f'"Power unplugged" in {SETTINGS[:-1]}.')
+                dialogs.alert("Plug in first", "Your MacBook should be plugged to power before "
+                              "you can activate the alarm. Alternatively, turn off "
+                              f'"Power unplugged" in {SETTINGS[:-1]}.')
                 return
             self.config["activated"] = True
             self.monitor.start()

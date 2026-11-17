@@ -1,40 +1,79 @@
 """Fullscreen "Protected by unplugg" cover on every display while armed.
 
-On the first key/mouse the Mac locks (the login window enforces the real
-password — we never handle the password ourselves; reinventing auth is a bug
-farm). The cover stays until monitoring is deactivated.
+The first key press, click, scroll or mouse move calls back into the app, which
+asks for Touch ID or the login password (LocalAuthentication — we never see the
+password; reinventing auth is a bug farm). The cover stays until then.
 
 Must be called on the main thread.
 """
 from AppKit import (
     NSAppearance, NSAppearanceNameDarkAqua, NSApplication, NSBackingStoreBuffered, NSColor,
-    NSEvent, NSEventMaskKeyDown, NSEventMaskLeftMouseDown, NSEventMaskRightMouseDown, NSFont,
-    NSFontWeightSemibold, NSImageScaleProportionallyUpOrDown, NSImageView, NSScreen,
-    NSScreenSaverWindowLevel, NSTextAlignmentCenter, NSTextField, NSView,
+    NSEvent, NSEventMaskFlagsChanged, NSEventMaskKeyDown, NSEventMaskLeftMouseDown,
+    NSEventMaskMouseMoved, NSEventMaskOtherMouseDown, NSEventMaskRightMouseDown,
+    NSEventMaskScrollWheel, NSFont, NSFontWeightSemibold, NSImageScaleProportionallyUpOrDown,
+    NSImageView, NSScreen, NSScreenSaverWindowLevel, NSTextAlignmentCenter, NSTextField, NSView,
     NSVisualEffectBlendingModeBehindWindow,
     NSVisualEffectMaterialFullScreenUI, NSVisualEffectStateActive, NSVisualEffectView, NSWindow,
     NSWindowCollectionBehaviorCanJoinAllSpaces, NSWindowCollectionBehaviorFullScreenAuxiliary,
     NSWindowCollectionBehaviorStationary, NSWindowStyleMaskBorderless, NSWorkspace,
 )
+from PyObjCTools import AppHelper
 from Quartz import CABasicAnimation
 
-from utils import lock_screen
+INPUT = (NSEventMaskKeyDown | NSEventMaskFlagsChanged | NSEventMaskMouseMoved
+         | NSEventMaskLeftMouseDown | NSEventMaskRightMouseDown | NSEventMaskOtherMouseDown
+         | NSEventMaskScrollWheel)
 
 _windows = []
-_badges = []   # (dot, text) per display
-_monitor = None
+_badges = []    # (dot, text) per display
+_monitors = []
+_on_input = None
 
 
-def show(alarm=False):
-    """Cover every display; on later calls just flip the badge to the alarm state."""
-    global _windows, _monitor
+class _Cover(NSWindow):
+    def canBecomeKeyWindow(self):
+        return True  # borderless windows refuse by default, so keys never reached us
+
+
+def show(on_input, alarm=False):
+    """Cover every display; on later calls just flip the badge to the alarm state.
+    The first input after that calls on_input() once."""
+    global _windows, _on_input
     if not _windows:
+        _on_input = on_input
         _windows = [_cover(screen) for screen in NSScreen.screens()]
         _windows[0].makeKeyAndOrderFront_(None)
         NSApplication.sharedApplication().activateIgnoringOtherApps_(True)
-        mask = NSEventMaskKeyDown | NSEventMaskLeftMouseDown | NSEventMaskRightMouseDown
-        _monitor = NSEvent.addLocalMonitorForEventsMatchingMask_handler_(mask, _on_input)
+        listen()
     _set_badges(alarm)
+
+
+def listen(delay=1.5):
+    """Watch for input after `delay` s, so the hand that just clicked Activate
+    or closed the Touch ID dialog doesn't set it off again."""
+    AppHelper.callLater(delay, _watch)
+
+
+def _watch():
+    if _windows and not _monitors:
+        _monitors.extend([
+            NSEvent.addLocalMonitorForEventsMatchingMask_handler_(INPUT, _input),
+            # input that lands in another app after Cmd-Tab; keys there need Accessibility
+            NSEvent.addGlobalMonitorForEventsMatchingMask_handler_(INPUT, _input),
+        ])
+
+
+def _unwatch():
+    for m in _monitors:
+        NSEvent.removeMonitor_(m)
+    _monitors.clear()
+
+
+def _input(event):
+    if _monitors:
+        _unwatch()
+        AppHelper.callAfter(_on_input)  # after this event returns; auth blocks
+    return None  # swallow it
 
 
 def _set_badges(alarm):
@@ -50,27 +89,21 @@ def _set_badges(alarm):
 
 
 def hide():
-    global _windows, _monitor
-    if _monitor:
-        NSEvent.removeMonitor_(_monitor)
-        _monitor = None
+    global _windows
+    _unwatch()
     for win in _windows:
         win.orderOut_(None)
     _windows = []
     _badges.clear()
 
 
-def _on_input(event):
-    lock_screen()
-    return None  # swallow the event
-
-
 def _cover(screen):
     frame = screen.frame()
     w, h = frame.size.width, frame.size.height
-    win = NSWindow.alloc().initWithContentRect_styleMask_backing_defer_(
+    win = _Cover.alloc().initWithContentRect_styleMask_backing_defer_(
         frame, NSWindowStyleMaskBorderless, NSBackingStoreBuffered, False)
-    win.setLevel_(NSScreenSaverWindowLevel)
+    win.setLevel_(NSScreenSaverWindowLevel - 1)  # Touch ID's dialog draws at 1000; stay under it
+    win.setAcceptsMouseMovedEvents_(True)
     # follow every Space and full-screen app, so swiping desktops can't escape it
     win.setCollectionBehavior_(NSWindowCollectionBehaviorCanJoinAllSpaces
                                | NSWindowCollectionBehaviorStationary
@@ -90,7 +123,7 @@ def _cover(screen):
     logo.setImageScaling_(NSImageScaleProportionallyUpOrDown)
     blur.addSubview_(logo)
     blur.addSubview_(_label("Protected by unplugg", 34, (0, h / 2 - 36, w, 44), bold=True))
-    blur.addSubview_(_label("Press any key or click, then sign in to resume.", 15,
+    blur.addSubview_(_label("Press any key or move the mouse to unlock.", 15,
                             (0, h / 2 - 70, w, 22), NSColor.secondaryLabelColor()))
     _badge(blur, h / 2 - 116)
     return win

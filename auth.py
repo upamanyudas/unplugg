@@ -14,7 +14,8 @@ except Exception:  # framework not installed
 
 
 def require(reason="confirm it's you") -> bool:
-    """Block until the owner authenticates. True = proceed, False = denied."""
+    """Block until the owner authenticates. True = proceed, False = denied.
+    `reason` ends macOS's own sentence: "unplugg is trying to <reason>." """
     if LAContext is None:
         return True
     ctx = LAContext.alloc().init()
@@ -31,5 +32,6 @@ def require(reason="confirm it's you") -> bool:
 
     ctx.evaluatePolicy_localizedReason_reply_(
         LAPolicyDeviceOwnerAuthentication, reason, reply)
-    done.wait(120)
+    if not done.wait(120):
+        ctx.invalidate()  # close the dialog nobody answered
     return result.get("ok", False)

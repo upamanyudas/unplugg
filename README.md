@@ -23,7 +23,7 @@ link, and pushes a Telegram alert — then optionally locks the Mac.
 | Location in the alert | ✅ **CoreLocation** → Google Maps link |
 | "Turn on Find My + live link" | ❌ **No Apple API exists.** Replaced by the CoreLocation link above. |
 | Telegram alert with media | ✅ Bot API |
-| Overlay + lock | ✅ overlay covers the screen; first input locks the Mac (login window enforces the password) |
+| Overlay | ✅ covers every screen; any key or mouse move asks for Touch ID / password, then whether to deactivate |
 | Launch at login | ✅ LaunchAgent (works Catalina → latest) |
 
 The lid-angle sensor is undocumented HID, so the app must run **un-sandboxed**

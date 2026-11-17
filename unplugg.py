@@ -39,8 +39,9 @@ class UnpluggApp(rumps.App):
         self.config = load_config()
         self.config["activated"] = False  # never boot already-armed
         self.monitor = Monitor(self._on_unsafe, self.config)
+        self.toggle = rumps.MenuItem("Activate", callback=self._toggle_activate)
         self.menu = [
-            rumps.MenuItem("Activate", callback=self._toggle_activate),
+            self.toggle,
             None,
             rumps.MenuItem(SETTINGS, callback=lambda _: open_preferences(self), key=","),
             None,
@@ -49,32 +50,48 @@ class UnpluggApp(rumps.App):
             rumps.MenuItem("Quit", callback=self._quit, key="q"),
         ]
 
-    def _toggle_activate(self, sender):
+    def _toggle_activate(self, _):
         if not self.config["activated"]:
-            if not self.laptop:
-                dialogs.alert(*NOT_LAPTOP)
-                return
-            if self.config["monitor_power"] and not sensors.is_plugged_in():
-                dialogs.alert("Plug in first", "Your MacBook should be plugged to power before "
-                              "you can activate the alarm. Alternatively, turn off "
-                              f'"Power unplugged" in {SETTINGS[:-1]}.')
-                return
-            self.config["activated"] = True
-            self.monitor.start()
-            sender.title = "Deactivate"
-            self._set_state("armed")
-            if self.config["show_overlay"]:
-                overlay.show()
-        else:
-            if not auth.require("Authenticate to deactivate unplugg"):
-                return
-            self.config["activated"] = False
-            self.monitor.stop()
-            alarm.stop_siren()
-            overlay.hide()
-            sender.title = "Activate"
-            self._set_state("idle")
+            self._activate()
+        elif auth.require("turn off the alarm"):  # macOS shows "unplugg is trying to …"
+            self._deactivate()
+
+    def _activate(self):
+        if not self.laptop:
+            dialogs.alert(*NOT_LAPTOP)
+            return
+        if self.config["monitor_power"] and not sensors.is_plugged_in():
+            dialogs.alert("Plug in first", "Your MacBook should be plugged to power before "
+                          "you can activate the alarm. Alternatively, turn off "
+                          f'"Power unplugged" in {SETTINGS[:-1]}.')
+            return
+        self.config["activated"] = True
+        self.monitor.start()
+        self.toggle.title = "Deactivate"
+        self._set_state("armed")
+        if self.config["show_overlay"]:
+            overlay.show(self._unlock)
         save_config(self.config)
+
+    def _deactivate(self):
+        self.config["activated"] = False
+        self.monitor.stop()
+        alarm.stop_siren()
+        overlay.hide()
+        self.toggle.title = "Activate"
+        self._set_state("idle")
+        save_config(self.config)
+
+    def _unlock(self):
+        """Someone touched the overlay: owner check, then disarm or keep guarding."""
+        if not auth.require("unlock the screen"):
+            overlay.listen()  # cancelled or a stranger: the cover stays
+            return
+        overlay.hide()
+        alarm.stop_siren()  # it's the owner
+        if dialogs.alert("Deactivate the alarm?", "Keep Armed hides this cover; "
+                         "the alarm keeps watching.", "Deactivate", "Keep Armed") == 0:
+            self._deactivate()
 
     def _set_state(self, state):
         self.icon = asset_path(GLYPHS[state])
@@ -85,7 +102,7 @@ class UnpluggApp(rumps.App):
     def _show_alarm(self):
         self._set_state("alarm")
         if self.config["show_overlay"]:
-            overlay.show(alarm=True)
+            overlay.show(self._unlock, alarm=True)
 
     def _on_unsafe(self, reason):
         # Runs on the monitor's background thread; UI work must hit the main thread.
@@ -93,7 +110,7 @@ class UnpluggApp(rumps.App):
         alarm.trigger(self.config, reason)
 
     def _quit(self, _):
-        if self.config["activated"] and not auth.require("Authenticate to quit unplugg"):
+        if self.config["activated"] and not auth.require("quit while armed"):
             return
         self.monitor.stop()
         alarm.stop_siren()

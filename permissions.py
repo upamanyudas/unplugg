@@ -1,9 +1,8 @@
 """Permission status + request + open-Settings, for the Preferences panel.
 
 Camera/Microphone use AVFoundation's authorization API; Location uses
-CoreLocation; Accessibility (needed for the lock-screen keystroke) uses the
-Accessibility trust API. Anything whose framework is missing degrades to "n/a"
-with an Open-Settings button — we never block import on an optional framework.
+CoreLocation. Anything whose framework is missing degrades to "n/a" with an
+Open-Settings button — we never block import on an optional framework.
 """
 from AppKit import NSWorkspace
 from Foundation import NSURL
@@ -12,7 +11,6 @@ _SETTINGS = {
     "camera": "Privacy_Camera",
     "microphone": "Privacy_Microphone",
     "location": "Privacy_LocationServices",
-    "accessibility": "Privacy_Accessibility",
 }
 
 # AVFoundation: camera + mic ------------------------------------------------
@@ -29,15 +27,6 @@ except Exception:
     CLLocationManager = None
 _loc_mgr = None  # keep a ref so the prompt isn't GC'd
 
-# Accessibility -------------------------------------------------------------
-try:
-    from ApplicationServices import (
-        AXIsProcessTrusted, AXIsProcessTrustedWithOptions,
-        kAXTrustedCheckOptionPrompt,
-    )
-except Exception:
-    AXIsProcessTrusted = None
-
 
 def status(key) -> str:
     """One of: 'granted', 'denied', 'unset', 'n/a'."""
@@ -47,8 +36,6 @@ def status(key) -> str:
     if key == "location" and CLLocationManager:
         return {3: "granted", 4: "granted", 2: "denied", 1: "denied"}.get(
             CLLocationManager.authorizationStatus(), "unset")
-    if key == "accessibility" and AXIsProcessTrusted:
-        return "granted" if AXIsProcessTrusted() else "unset"
     return "n/a"
 
 
@@ -62,9 +49,6 @@ def request(key):
         global _loc_mgr
         _loc_mgr = CLLocationManager.alloc().init()
         _loc_mgr.requestWhenInUseAuthorization()
-        return
-    if key == "accessibility" and AXIsProcessTrusted:
-        AXIsProcessTrustedWithOptions({kAXTrustedCheckOptionPrompt: True})
         return
     open_settings(key)
 

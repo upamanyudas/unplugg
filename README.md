@@ -19,7 +19,7 @@ link, and pushes a Telegram alert — then optionally locks the Mac.
 | Siren | ✅ macOS `afplay`, forced to full volume on the chosen output |
 | Photo + 10s video **with audio** | ✅ ffmpeg (avfoundation); OpenCV video-only fallback |
 | Pick camera / mic / speaker | ✅ AVFoundation + SwitchAudioSource; built-in camera and mic by default |
-| Permissions setup (camera/mic/location/accessibility) | ✅ Settings → Permissions |
+| Permissions setup (camera/mic/location) | ✅ Settings → Permissions |
 | Location in the alert | ✅ **CoreLocation** → Google Maps link |
 | "Turn on Find My + live link" | ❌ **No Apple API exists.** Replaced by the CoreLocation link above. |
 | Telegram alert with media | ✅ Bot API |

@@ -58,7 +58,7 @@ def _watch():
     if _windows and not _monitors:
         _monitors.extend([
             NSEvent.addLocalMonitorForEventsMatchingMask_handler_(INPUT, _input),
-            # input that lands in another app after Cmd-Tab; keys there need Accessibility
+            # input that lands in another app after Cmd-Tab (mouse only: keys need Accessibility)
             NSEvent.addGlobalMonitorForEventsMatchingMask_handler_(INPUT, _input),
         ])
 

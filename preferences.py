@@ -40,7 +40,6 @@ PERMS = [
     ("camera", "Camera"),
     ("microphone", "Microphone"),
     ("location", "Location"),
-    ("accessibility", "Accessibility"),
 ]
 
 STATUS = {  # permission state → (label, colour)

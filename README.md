@@ -23,7 +23,7 @@ link, and pushes a Telegram alert — then optionally locks the Mac.
 | Location in the alert | ✅ **CoreLocation** → Google Maps link |
 | "Turn on Find My + live link" | ❌ **No Apple API exists.** Replaced by the CoreLocation link above. |
 | Telegram alert with media | ✅ Bot API |
-| Screen flash for photos | ✅ white at full brightness (built-in screen), then lock if on; restored on unlock |
+| Screen flash for photos | ✅ built-in screen to full brightness (lit even behind the lock screen) + white cover; restored on unlock |
 | Overlay | ✅ covers every screen; any key or mouse move asks for Touch ID / password, then whether to deactivate |
 | Launch at login | ✅ LaunchAgent (works Catalina → latest) |
 | Menu bar only, or Dock too | ✅ Settings → General → Show in Dock; every quit path asks for Touch ID while armed |

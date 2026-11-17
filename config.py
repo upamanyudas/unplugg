@@ -18,7 +18,7 @@ DEFAULTS = {
     "play_sound": True,
     "send_location": True,       # attach a maps link (CoreLocation)
     "capture_media": True,       # photos + 10s video
-    "flash_screen": True,        # white screen at full brightness for the photos
+    "flash_screen": True,        # full brightness + white cover, lights the face for photos
     "record_audio": True,        # include mic audio in the video
     "camera": "",                # capture device names; "" = this Mac's built-in
     "mic": "",

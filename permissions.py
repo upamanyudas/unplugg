@@ -5,7 +5,7 @@ CoreLocation. Anything whose framework is missing degrades to "n/a" with an
 Open-Settings button — we never block import on an optional framework.
 """
 from AppKit import NSWorkspace
-from Foundation import NSURL
+from Foundation import NSBundle, NSURL
 
 _SETTINGS = {
     "camera": "Privacy_Camera",
@@ -34,6 +34,10 @@ def status(key) -> str:
         return {3: "granted", 2: "denied", 1: "denied"}.get(
             AVCaptureDevice.authorizationStatusForMediaType_(_MEDIA[key]), "unset")
     if key == "location" and CLLocationManager:
+        # macOS only grants Location to a bundle that explains why; from source
+        # that's Python.app, which doesn't
+        if not NSBundle.mainBundle().objectForInfoDictionaryKey_("NSLocationUsageDescription"):
+            return "app-only"
         return {3: "granted", 4: "granted", 2: "denied", 1: "denied"}.get(
             CLLocationManager.authorizationStatus(), "unset")
     return "n/a"

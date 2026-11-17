@@ -3,7 +3,7 @@ import sys
 
 import objc
 import rumps
-from AppKit import NSApplication, NSImage, NSProcessInfo, NSTerminateCancel, NSTerminateNow
+from AppKit import NSProcessInfo, NSTerminateCancel, NSTerminateNow
 from PyObjCTools import AppHelper
 
 import alarm
@@ -30,16 +30,13 @@ class UnpluggApp(rumps.App):
     def __init__(self):
         super().__init__("unplugg", icon=asset_path(GLYPHS["idle"]), template=True,
                          quit_button=None)
-        if not getattr(sys, "frozen", False):  # from source: our icon in alerts, not Python's
-            NSApplication.sharedApplication().setApplicationIconImage_(
-                NSImage.alloc().initWithContentsOfFile_(asset_path("logo.png")))
+        self.config = load_config()
+        self.config["activated"] = False  # never boot already-armed
+        show_in_dock(self.config["show_in_dock"])  # also sets our icon when run from source
         dialogs.install_main_menu()
         self.laptop = sensors.is_laptop()
         if not self.laptop and dialogs.alert(*NOT_LAPTOP, "Quit", "Open Anyway") == 0:
             sys.exit()
-        self.config = load_config()
-        self.config["activated"] = False  # never boot already-armed
-        show_in_dock(self.config["show_in_dock"])
         UnpluggApp.instance = self
         self.monitor = Monitor(self._on_unsafe, self.config)
         AppHelper.callLater(1, alarm.prepare)  # after launch, so the icon shows first

@@ -74,7 +74,9 @@ pip install -r requirements.txt
 python main.py
 ```
 
-First arm grants **Camera** and **Location** permission when prompted. The
+First arm grants **Camera** permission when prompted. **Location** needs the
+dev .app (see Build): macOS only grants it to a bundle that says why, and
+Python.app doesn't. The
 lid-angle slider only appears on Macs that have the sensor.
 
 ### Telegram in 60 seconds

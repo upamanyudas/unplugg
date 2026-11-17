@@ -49,6 +49,7 @@ STATUS = {  # permission state → (label, colour)
     "denied": ("● Denied", NSColor.systemRedColor),
     "unset": ("● Not set", NSColor.secondaryLabelColor),
     "n/a": ("Unavailable", NSColor.tertiaryLabelColor),
+    "app-only": ("● Needs the .app", NSColor.systemOrangeColor),
 }
 
 
@@ -344,7 +345,7 @@ def _refresh_perms(ctrl):
         text, color = STATUS[state]
         status.setStringValue_(text)
         status.setTextColor_(color())
-        btn.setHidden_(state == "granted")
+        btn.setHidden_(state in ("granted", "app-only"))
         btn.setTitle_("Grant…" if state == "unset" else "Open Settings…")
 
 

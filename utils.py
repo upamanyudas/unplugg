@@ -6,6 +6,7 @@ import sys
 
 from AppKit import (
     NSApplication, NSApplicationActivationPolicyAccessory, NSApplicationActivationPolicyRegular,
+    NSImage,
 )
 
 LOGIN = "/System/Library/PrivateFrameworks/login.framework/Versions/Current/login"
@@ -21,8 +22,12 @@ def asset_path(name: str) -> str:
 
 def show_in_dock(show: bool) -> None:
     """Regular app (Dock icon, Cmd-Tab, menu bar) or accessory (menu bar only)."""
-    NSApplication.sharedApplication().setActivationPolicy_(
+    app = NSApplication.sharedApplication()
+    app.setActivationPolicy_(
         NSApplicationActivationPolicyRegular if show else NSApplicationActivationPolicyAccessory)
+    if not getattr(sys, "frozen", False):
+        # from source, each switch makes the Dock re-read Python.app's icon
+        app.setApplicationIconImage_(NSImage.alloc().initWithContentsOfFile_(asset_path("logo.png")))
 
 
 def lock_screen() -> None:

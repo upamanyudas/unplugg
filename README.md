@@ -25,6 +25,7 @@ link, and pushes a Telegram alert — then optionally locks the Mac.
 | Telegram alert with media | ✅ Bot API |
 | Overlay | ✅ covers every screen; any key or mouse move asks for Touch ID / password, then whether to deactivate |
 | Launch at login | ✅ LaunchAgent (works Catalina → latest) |
+| Menu bar only, or Dock too | ✅ Settings → General → Show in Dock; every quit path asks for Touch ID while armed |
 
 The lid-angle sensor is undocumented HID, so the app must run **un-sandboxed**
 (direct download, not the App Store).

@@ -32,21 +32,25 @@ LOUD_HELP = (
     "Android (menu names vary by phone)\n"
     "• When the first alert arrives, long-press it › Priority.\n"
     "• Settings › Do Not Disturb › People › Conversations › Priority conversations.")
-EDIT_ITEMS = [("Undo", "undo:", "z"), ("Redo", "redo:", "Z"), ("Cut", "cut:", "x"),
-              ("Copy", "copy:", "c"), ("Paste", "paste:", "v"), ("Select All", "selectAll:", "a")]
+MENUS = [
+    ("unplugg", [("Hide unplugg", "hide:", "h"), ("Quit unplugg", "terminate:", "q")]),
+    ("Edit", [("Undo", "undo:", "z"), ("Redo", "redo:", "Z"), ("Cut", "cut:", "x"),
+              ("Copy", "copy:", "c"), ("Paste", "paste:", "v"), ("Select All", "selectAll:", "a")]),
+]
 
 
-def install_edit_menu():
-    """Cmd+X/C/V/A only reach text fields through the main menu, and a menu bar
-    app has none, so paste into the Telegram fields did nothing."""
-    edit = NSMenu.alloc().initWithTitle_("Edit")
-    for title, action, key in EDIT_ITEMS:
-        edit.addItemWithTitle_action_keyEquivalent_(title, action, key)
-    item = NSMenuItem.alloc().init()
-    item.setSubmenu_(edit)
+def install_main_menu():
+    """App + Edit menus. Cmd+X/C/V/A only reach text fields through the main menu,
+    and a menu bar app has none, so paste into the Telegram fields did nothing.
+    The bar itself only shows while unplugg has a Dock icon."""
     bar = NSMenu.alloc().init()
-    bar.addItem_(NSMenuItem.alloc().init())  # slot 0 is always the app menu
-    bar.addItem_(item)
+    for title, items in MENUS:  # slot 0 is always the app menu
+        menu = NSMenu.alloc().initWithTitle_(title)
+        for name, action, key in items:
+            menu.addItemWithTitle_action_keyEquivalent_(name, action, key)
+        item = NSMenuItem.alloc().init()
+        item.setSubmenu_(menu)
+        bar.addItem_(item)
     NSApplication.sharedApplication().setMainMenu_(bar)
 
 

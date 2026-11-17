@@ -1,8 +1,12 @@
-"""Small shared helpers: asset paths, screen lock."""
+"""Small shared helpers: asset paths, Dock icon, screen lock."""
 import ctypes
 import os
 import subprocess
 import sys
+
+from AppKit import (
+    NSApplication, NSApplicationActivationPolicyAccessory, NSApplicationActivationPolicyRegular,
+)
 
 LOGIN = "/System/Library/PrivateFrameworks/login.framework/Versions/Current/login"
 
@@ -13,6 +17,12 @@ def asset_path(name: str) -> str:
         from Foundation import NSBundle
         return os.path.join(NSBundle.mainBundle().resourcePath(), "assets", name)
     return os.path.join(os.path.dirname(__file__), "assets", name)
+
+
+def show_in_dock(show: bool) -> None:
+    """Regular app (Dock icon, Cmd-Tab, menu bar) or accessory (menu bar only)."""
+    NSApplication.sharedApplication().setActivationPolicy_(
+        NSApplicationActivationPolicyRegular if show else NSApplicationActivationPolicyAccessory)
 
 
 def lock_screen() -> None:

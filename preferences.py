@@ -29,6 +29,7 @@ import permissions
 import sensors
 import telegram
 from config import save_config
+from utils import show_in_dock
 
 _controller = None  # retain while open
 
@@ -56,6 +57,7 @@ def open_preferences(app):
     if _controller is None:
         _controller = _build(app)
         _controller.window.center()
+    show_in_dock(True)  # a window is open: Dock icon and Cmd-Tab, like any app
     _controller.window.makeKeyAndOrderFront_(None)
     NSApplication.sharedApplication().activateIgnoringOtherApps_(True)
 
@@ -144,6 +146,7 @@ class _Prefs(NSObject):
         global _controller
         self.cfg["settings_pane"] = self.tabs.selectedTabViewItemIndex()
         save_config(self.cfg)
+        show_in_dock(self.cfg["show_in_dock"])
         _controller = None
 
 
@@ -194,7 +197,8 @@ def _general_page(ctrl, view, y):
     y = _group(view, y, "While armed", [
         ("Show overlay", _switch(ctrl, "show_overlay")),
         ("Lock Mac when triggered", _switch(ctrl, "lock_device"))])
-    return _group(view, y, None, [("Launch at login", _switch(ctrl, "launch_at_login"))])
+    return _group(view, y, None, [("Show in Dock", _switch(ctrl, "show_in_dock")),
+                                  ("Launch at login", _switch(ctrl, "launch_at_login"))])
 
 
 def _alerts_page(ctrl, view, y):

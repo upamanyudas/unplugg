@@ -1,8 +1,9 @@
 """Menu bar app. Menu stays glanceable; all settings live in Settings."""
 import sys
 
+import objc
 import rumps
-from AppKit import NSApplication, NSImage, NSProcessInfo
+from AppKit import NSApplication, NSImage, NSProcessInfo, NSTerminateCancel, NSTerminateNow
 from PyObjCTools import AppHelper
 
 import alarm
@@ -13,7 +14,7 @@ import sensors
 from config import load_config, save_config
 from monitor import Monitor
 from preferences import open_preferences
-from utils import asset_path
+from utils import asset_path, show_in_dock
 
 # outline = idle, filled = armed, red = alarm fired
 GLYPHS = {"idle": "menubar.pdf", "armed": "menubar_armed.pdf", "alarm": "menubar_alarm.pdf"}
@@ -32,12 +33,14 @@ class UnpluggApp(rumps.App):
         if not getattr(sys, "frozen", False):  # from source: our icon in alerts, not Python's
             NSApplication.sharedApplication().setApplicationIconImage_(
                 NSImage.alloc().initWithContentsOfFile_(asset_path("logo.png")))
-        dialogs.install_edit_menu()
+        dialogs.install_main_menu()
         self.laptop = sensors.is_laptop()
         if not self.laptop and dialogs.alert(*NOT_LAPTOP, "Quit", "Open Anyway") == 0:
             sys.exit()
         self.config = load_config()
         self.config["activated"] = False  # never boot already-armed
+        show_in_dock(self.config["show_in_dock"])
+        UnpluggApp.instance = self
         self.monitor = Monitor(self._on_unsafe, self.config)
         AppHelper.callLater(1, alarm.prepare)  # after launch, so the icon shows first
         self.toggle = rumps.MenuItem("Activate", callback=self._toggle_activate)
@@ -113,9 +116,21 @@ class UnpluggApp(rumps.App):
         alarm.trigger(self.config, reason)
 
     def _quit(self, _):
+        rumps.quit_application()  # → applicationShouldTerminate_ below
+
+    def allow_quit(self):
+        """Touch ID if armed; on yes, stop everything. Returns whether to quit."""
         if self.config["activated"] and not auth.require("quit while armed"):
-            return
+            return False
         self.monitor.stop()
         alarm.stop_siren()
         overlay.hide()
-        rumps.quit_application()
+        return True
+
+
+class NSApp(objc.Category(rumps.rumps.NSApp)):
+    """Every quit (menu, Cmd+Q, the Dock, logout) asks rumps' app delegate first,
+    so a Dock icon can't become a way around Touch ID."""
+
+    def applicationShouldTerminate_(self, _):
+        return NSTerminateNow if UnpluggApp.instance.allow_quit() else NSTerminateCancel

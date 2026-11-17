@@ -8,7 +8,7 @@ icon, which from source is Python's rocket, not the one unplugg.py sets.
 """
 from AppKit import (
     NSAlert, NSView, NSTextField, NSSecureTextField, NSFont, NSColor, NSApplication, NSMenu,
-    NSMenuItem, NSButton,
+    NSMenuItem, NSButton, NSBezelStyleHelpButton,
     NSAlertFirstButtonReturn, NSAlertStyleCritical,
     NSLinkAttributeName, NSForegroundColorAttributeName, NSFontAttributeName,
 )
@@ -17,6 +17,18 @@ from Foundation import NSMakeRect, NSAttributedString, NSObject, NSURL
 import telegram
 
 TOKEN_HELP = ("How to get a bot token", "https://core.telegram.org/bots/features#botfather")
+# The Bot API has no priority flag (only disable_notification, which goes quieter),
+# so a loud alert is a setting on the phone.
+LOUD_HELP = (
+    "Telegram bots can't force a loud alert. Set this up once on your phone.\n\n"
+    "iPhone\n"
+    "• Settings › Focus › each Focus › Apps › add Telegram.\n"
+    "• Telegram › Settings › Notifications and Sounds: give your bot's chat a loud sound.\n"
+    "• Silent mode on? Only vibration gets through: "
+    "Settings › Sounds & Haptics › Haptics › Always Play.\n\n"
+    "Android (menu names vary by phone)\n"
+    "• When the first alert arrives, long-press it › Priority.\n"
+    "• Settings › Do Not Disturb › People › Conversations › Priority conversations.")
 EDIT_ITEMS = [("Undo", "undo:", "z"), ("Redo", "redo:", "Z"), ("Cut", "cut:", "x"),
               ("Copy", "copy:", "c"), ("Paste", "paste:", "v"), ("Select All", "selectAll:", "a")]
 
@@ -71,6 +83,9 @@ class _Setup(NSObject):
         err = telegram.send_test(_value(self.token), _value(self.chat))
         self.status.setStringValue_(err or "Sent. Check Telegram.")
 
+    def loud_(self, _):
+        alert("Make alerts loud on your phone", LOUD_HELP, "Done")
+
     def controlTextDidChange_(self, _):
         has_token = bool(_value(self.token))
         self.detect.setEnabled_(has_token)
@@ -91,10 +106,16 @@ def setup_telegram():
     ui.detect = _button(view, "Auto-detect", ui, "detect:", (258, 88))
     ui.hint = _text("Send your bot any message, then click Auto-detect.",
                     NSMakeRect(0, 70, 360, 16), 11, color=NSColor.secondaryLabelColor())
-    ui.test = _button(view, "Send Test Message", ui, "test:", (0, 26))
+    ui.test = _button(view, "Send Test Message", ui, "test:", (0, 34))
     x = ui.test.frame().size.width + 8
-    ui.status = _text("", NSMakeRect(x, 31, 360 - x, 16), 11, color=NSColor.secondaryLabelColor())
-    for v in (ui.hint, ui.status):
+    ui.status = _text("", NSMakeRect(x, 39, 360 - x, 16), 11, color=NSColor.secondaryLabelColor())
+    loud = _button(view, "", ui, "loud:", (0, 0))
+    loud.setBezelStyle_(NSBezelStyleHelpButton)
+    loud.sizeToFit()
+    x = loud.frame().size.width + 6
+    loud_label = _text("Make alerts ring on silent or Do Not Disturb",
+                       NSMakeRect(x, 3, 360 - x, 16), 11, color=NSColor.secondaryLabelColor())
+    for v in (ui.hint, ui.status, loud_label):
         view.addSubview_(v)
     for f in (ui.token, ui.chat):
         f.setDelegate_(ui)  # enable the buttons as the fields fill in

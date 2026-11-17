@@ -83,6 +83,16 @@ lid-angle slider only appears on Macs that have the sensor.
    click **Auto-detect** for the chat id, then **Send Test Message**.
    Save checks the details with Telegram first.
 
+### Make alerts loud on your phone
+Bots can't mark a message high priority; the Bot API only has a *silent* flag.
+So it's a one-time phone setting (also under **?** in the setup panel):
+
+- **iPhone:** Settings › Focus › each Focus › Apps › add Telegram. In Telegram,
+  Settings › Notifications and Sounds: give the bot's chat a loud sound. Silent
+  mode only lets vibration through: Sounds & Haptics › Haptics › Always Play.
+- **Android:** long-press the first alert › **Priority**, then allow priority
+  conversations in Do Not Disturb.
+
 ## Build the .app
 
 ```bash

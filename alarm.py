@@ -37,12 +37,16 @@ def prepare():
 
 
 def trigger(config: dict, event: str):
-    if config["lock_device"]:
-        lock_screen()  # first: capture and upload take ~20 s
+    # lock at once (capture + upload take ~20 s), unless the flash needs the screen
+    lock_after_photos = config["flash_screen"] and config["capture_media"]
+    if config["lock_device"] and not lock_after_photos:
+        lock_screen()
 
     photo = video = None
     if config["capture_media"]:
         photo, video = capture.capture(config)
+    if config["lock_device"] and lock_after_photos:
+        lock_screen()
 
     link = location.maps_link() if config["send_location"] else None
     telegram.send_alert(event, config, photo=photo, video=video, location_url=link)

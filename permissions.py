@@ -34,10 +34,10 @@ def status(key) -> str:
         return {3: "granted", 2: "denied", 1: "denied"}.get(
             AVCaptureDevice.authorizationStatusForMediaType_(_MEDIA[key]), "unset")
     if key == "location" and CLLocationManager:
-        # macOS only grants Location to a bundle that explains why; from source
-        # that's Python.app, which doesn't
+        # from source, Location belongs to the terminal that launched Python and
+        # CoreLocation can't report it (Python.app has no usage description)
         if not NSBundle.mainBundle().objectForInfoDictionaryKey_("NSLocationUsageDescription"):
-            return "app-only"
+            return "via-terminal"
         return {3: "granted", 4: "granted", 2: "denied", 1: "denied"}.get(
             CLLocationManager.authorizationStatus(), "unset")
     return "n/a"

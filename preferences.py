@@ -49,7 +49,7 @@ STATUS = {  # permission state → (label, colour)
     "denied": ("● Denied", NSColor.systemRedColor),
     "unset": ("● Not set", NSColor.secondaryLabelColor),
     "n/a": ("Unavailable", NSColor.tertiaryLabelColor),
-    "app-only": ("● Needs the .app", NSColor.systemOrangeColor),
+    "via-terminal": ("● Via terminal", NSColor.systemOrangeColor),
 }
 
 
@@ -206,6 +206,7 @@ def _alerts_page(ctrl, view, y):
     y = _group(view, y, "When triggered", [
         ("Play siren at full volume", _switch(ctrl, "play_sound")),
         ("Send photo & video", _switch(ctrl, "capture_media")),
+        ("Flash screen for photos", _switch(ctrl, "flash_screen")),
         ("Record audio with video", _switch(ctrl, "record_audio")),
         ("Send location", _switch(ctrl, "send_location"))])
     ctrl.popup = _popup(ctrl, [], 0, None, 150)
@@ -245,7 +246,7 @@ def _permissions_page(ctrl, view, y):
     for key, label in PERMS:
         btn = _button("Open Settings…", ctrl, "permGrant:")
         status = _label("", 12)
-        status.setFrameSize_((90, status.frame().size.height))
+        status.setFrameSize_((110, status.frame().size.height))
         status.setAlignment_(NSTextAlignmentRight)
         ctrl.permbtns[btn] = key
         ctrl.permrows[key] = (status, btn)
@@ -345,7 +346,7 @@ def _refresh_perms(ctrl):
         text, color = STATUS[state]
         status.setStringValue_(text)
         status.setTextColor_(color())
-        btn.setHidden_(state in ("granted", "app-only"))
+        btn.setHidden_(state == "granted")
         btn.setTitle_("Grant…" if state == "unset" else "Open Settings…")
 
 

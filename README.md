@@ -23,6 +23,7 @@ link, and pushes a Telegram alert — then optionally locks the Mac.
 | Location in the alert | ✅ **CoreLocation** → Google Maps link |
 | "Turn on Find My + live link" | ❌ **No Apple API exists.** Replaced by the CoreLocation link above. |
 | Telegram alert with media | ✅ Bot API |
+| Screen flash for photos | ✅ white at full brightness (built-in screen), then lock if on; restored on unlock |
 | Overlay | ✅ covers every screen; any key or mouse move asks for Touch ID / password, then whether to deactivate |
 | Launch at login | ✅ LaunchAgent (works Catalina → latest) |
 | Menu bar only, or Dock too | ✅ Settings → General → Show in Dock; every quit path asks for Touch ID while armed |
@@ -74,9 +75,9 @@ pip install -r requirements.txt
 python main.py
 ```
 
-First arm grants **Camera** permission when prompted. **Location** needs the
-dev .app (see Build): macOS only grants it to a bundle that says why, and
-Python.app doesn't. The
+First arm grants **Camera** permission when prompted. From source,
+**Location** belongs to your terminal app, so Settings shows "Via terminal";
+the dev .app (see Build) gets its own. The
 lid-angle slider only appears on Macs that have the sensor.
 
 ### Telegram in 60 seconds

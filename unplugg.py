@@ -104,8 +104,8 @@ class UnpluggApp(rumps.App):
         if self.config["play_sound"]:
             alarm.start_siren(self.config["speaker_name"])
         self._set_state("alarm")
-        if self.config["show_overlay"]:
-            overlay.show(self._unlock, alarm=True)
+        if self.config["show_overlay"] or self.config["flash_screen"]:
+            overlay.show(self._unlock, alarm=True, flash=self.config["flash_screen"])
 
     def _on_unsafe(self, reason):
         # Runs on the monitor's background thread; UI work must hit the main thread.

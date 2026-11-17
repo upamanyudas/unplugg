@@ -4,8 +4,14 @@ The first key press, click, scroll or mouse move calls back into the app, which
 asks for Touch ID or the login password (LocalAuthentication — we never see the
 password; reinventing auth is a bug farm). The cover stays until then.
 
+When the alarm fires it can also flash: plain white at full brightness, so the
+webcam sees a lit face. Brightness goes through private DisplayServices (what
+Lunar and BetterDisplay use); only the built-in screen answers to it.
+
 Must be called on the main thread.
 """
+import ctypes
+
 from AppKit import (
     NSAppearance, NSAppearanceNameDarkAqua, NSApplication, NSBackingStoreBuffered, NSColor,
     NSEvent, NSEventMaskFlagsChanged, NSEventMaskKeyDown, NSEventMaskLeftMouseDown,
@@ -28,6 +34,12 @@ _windows = []
 _badges = []    # (dot, text) per display
 _monitors = []
 _on_input = None
+_whites = []      # hidden white sheet per display, shown by the flash
+_brightness = {}  # display id -> level before the flash
+
+_DS = ctypes.CDLL("/System/Library/PrivateFrameworks/DisplayServices.framework/DisplayServices")
+_DS.DisplayServicesGetBrightness.argtypes = [ctypes.c_uint32, ctypes.POINTER(ctypes.c_float)]
+_DS.DisplayServicesSetBrightness.argtypes = [ctypes.c_uint32, ctypes.c_float]
 
 
 class _Cover(NSWindow):
@@ -35,9 +47,9 @@ class _Cover(NSWindow):
         return True  # borderless windows refuse by default, so keys never reached us
 
 
-def show(on_input, alarm=False):
-    """Cover every display; on later calls just flip the badge to the alarm state.
-    The first input after that calls on_input() once."""
+def show(on_input, alarm=False, flash=False):
+    """Cover every display; on later calls just flip the badge to the alarm state
+    (and flash). The first input after that calls on_input() once."""
     global _windows, _on_input
     if not _windows:
         _on_input = on_input
@@ -46,6 +58,18 @@ def show(on_input, alarm=False):
         NSApplication.sharedApplication().activateIgnoringOtherApps_(True)
         listen()
     _set_badges(alarm)
+    if flash:
+        _flash()
+
+
+def _flash():
+    for white in _whites:
+        white.setHidden_(False)
+    for screen in NSScreen.screens():
+        display, level = screen.deviceDescription()["NSScreenNumber"], ctypes.c_float()
+        if _DS.DisplayServicesGetBrightness(display, ctypes.byref(level)) == 0:  # built-in only
+            _brightness.setdefault(display, level.value)
+            _DS.DisplayServicesSetBrightness(display, 1.0)
 
 
 def listen(delay=1.5):
@@ -91,10 +115,14 @@ def _set_badges(alarm):
 def hide():
     global _windows
     _unwatch()
+    for display, level in _brightness.items():
+        _DS.DisplayServicesSetBrightness(display, level)
+    _brightness.clear()
     for win in _windows:
         win.orderOut_(None)
     _windows = []
     _badges.clear()
+    _whites.clear()
 
 
 def _cover(screen):
@@ -126,6 +154,12 @@ def _cover(screen):
     blur.addSubview_(_label("Press any key or move the mouse to unlock.", 15,
                             (0, h / 2 - 70, w, 22), NSColor.secondaryLabelColor()))
     _badge(blur, h / 2 - 116)
+    white = NSView.alloc().initWithFrame_(((0, 0), (w, h)))
+    white.setWantsLayer_(True)
+    white.layer().setBackgroundColor_(NSColor.whiteColor().CGColor())
+    white.setHidden_(True)
+    blur.addSubview_(white)  # last, so it sits on top
+    _whites.append(white)
     return win
 
 

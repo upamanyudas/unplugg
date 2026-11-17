@@ -20,6 +20,9 @@ GLYPHS = {"idle": "menubar.pdf", "armed": "menubar_armed.pdf", "alarm": "menubar
 # Ventura renamed Preferences to Settings; say whichever this macOS says
 SETTINGS = ("Settings…" if NSProcessInfo.processInfo().isOperatingSystemAtLeastVersion_((13, 0, 0))
             else "Preferences…")
+NOT_LAPTOP = ("unplugg is made for MacBooks",
+              "It guards the power cable and the lid. This Mac has no battery or lid, "
+              "so the alarm can't be activated here.")
 
 
 class UnpluggApp(rumps.App):
@@ -30,6 +33,9 @@ class UnpluggApp(rumps.App):
             NSApplication.sharedApplication().setApplicationIconImage_(
                 NSImage.alloc().initWithContentsOfFile_(asset_path("logo.png")))
         dialogs.install_edit_menu()
+        self.laptop = sensors.is_laptop()
+        if not self.laptop and dialogs.alert(*NOT_LAPTOP, "Quit", "Open Anyway") == 0:
+            sys.exit()
         self.config = load_config()
         self.config["activated"] = False  # never boot already-armed
         self.monitor = Monitor(self._on_unsafe, self.config)
@@ -45,6 +51,9 @@ class UnpluggApp(rumps.App):
 
     def _toggle_activate(self, sender):
         if not self.config["activated"]:
+            if not self.laptop:
+                dialogs.alert(*NOT_LAPTOP)
+                return
             if self.config["monitor_power"] and not sensors.is_plugged_in():
                 dialogs.alert("Plug in first", "Your MacBook should be plugged to power before "
                               "you can activate the alarm. Alternatively, turn off "

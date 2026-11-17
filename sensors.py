@@ -1,4 +1,4 @@
-"""Hardware state: AC power, lid angle (2019+ Macs), clamshell open/closed.
+"""Hardware state: laptop or not, AC power, lid angle (2019+ Macs), clamshell open/closed.
 
 Lid angle comes from an undocumented HID sensor that only exists on 2019+ Macs.
 Where it's missing we fall back to the clamshell (closed/open) boolean, which is
@@ -23,12 +23,21 @@ def has_angle_sensor() -> bool:
     return _HAS_ANGLE
 
 
+def _battery() -> str:
+    return subprocess.run(["pmset", "-g", "batt"], capture_output=True, text=True).stdout
+
+
+def is_laptop() -> bool:
+    """Every MacBook lists an InternalBattery; desktops have none. hw.model can't
+    tell: since M2, MacBooks and desktops are both "MacNN,N"."""
+    return "InternalBattery" in _battery()
+
+
 def is_plugged_in() -> bool:
     """True if running on AC power. `pmset -g batt` prints "Now drawing from
     'AC Power'" when plugged — `pmset -g ac` does NOT contain that string, which
     was the false "plug in first" bug."""
-    out = subprocess.run(["pmset", "-g", "batt"], capture_output=True, text=True).stdout
-    return "AC Power" in out
+    return "AC Power" in _battery()
 
 
 def lid_angle():
@@ -51,7 +60,7 @@ def demo():
     assert isinstance(is_lid_closed(), bool)
     a = lid_angle()
     assert a is None or isinstance(a, (int, float))
-    print(f"plugged={is_plugged_in()} closed={is_lid_closed()} "
+    print(f"laptop={is_laptop()} plugged={is_plugged_in()} closed={is_lid_closed()} "
           f"angle={a} angle_sensor={has_angle_sensor()}")
 
 

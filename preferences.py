@@ -18,15 +18,16 @@ from AppKit import (
     NSSegmentSwitchTrackingMomentary, NSSlider, NSSwitch, NSTabViewController,
     NSTabViewControllerTabStyleToolbar, NSTabViewItem, NSTextAlignmentRight, NSTextField, NSView,
     NSViewController, NSWindow, NSWindowStyleMaskClosable, NSWindowStyleMaskTitled,
-    NSWindowToolbarStylePreference,
+    NSWindowToolbarStylePreference, NSWorkspace,
 )
-from Foundation import NSMakeRect, NSObject
+from Foundation import NSMakeRect, NSObject, NSURL
 
 import devices
 import dialogs
 import loginitem
 import permissions
 import sensors
+import telegram
 from config import save_config
 
 _controller = None  # retain while open
@@ -103,6 +104,17 @@ class _Prefs(NSObject):
             self.cfg["media_dir"] = path
             save_config(self.cfg)
             self.dirlabel.setStringValue_(_short(path))
+
+    def openFolder_(self, _):
+        path = Path(self.cfg["media_dir"]).expanduser()
+        path.mkdir(parents=True, exist_ok=True)  # capture makes it lazily
+        NSWorkspace.sharedWorkspace().openURL_(NSURL.fileURLWithPath_(str(path)))
+
+    def destTest_(self, _):
+        dest = self.cfg["telegram_destinations"][self.popup.indexOfSelectedItem()]
+        err = telegram.send_test(dest["token"], dest["chat_id"])
+        dialogs.alert("Test failed" if err else "Test sent",
+                      f"Telegram says: {err}" if err else f"Check Telegram for {dest['name']}.")
 
     def destEdit_(self, sender):
         if sender.selectedSegment() == 0:
@@ -191,17 +203,20 @@ def _alerts_page(ctrl, view, y):
         ("Send photo & video", _switch(ctrl, "capture_media")),
         ("Record audio with video", _switch(ctrl, "record_audio")),
         ("Send location", _switch(ctrl, "send_location"))])
-    ctrl.popup = _popup(ctrl, [], 0, None, 190)
+    ctrl.popup = _popup(ctrl, [], 0, None, 150)
     ctrl.destbtns = NSSegmentedControl.segmentedControlWithImages_trackingMode_target_action_(
         [NSImage.imageNamed_("NSAddTemplate"), NSImage.imageNamed_("NSRemoveTemplate")],
         NSSegmentSwitchTrackingMomentary, ctrl, "destEdit:")
+    ctrl.testbtn = _button("Send Test", ctrl, "destTest:")
     _refresh_destinations(ctrl)
-    y = _group(view, y, "Telegram", [("Destinations", _hstack(ctrl.popup, ctrl.destbtns))])
+    y = _group(view, y, "Telegram", [
+        ("Destinations", _hstack(ctrl.popup, ctrl.destbtns, ctrl.testbtn))])
     ctrl.dirlabel = _label(_short(ctrl.cfg["media_dir"]), 12, NSColor.secondaryLabelColor())
-    ctrl.dirlabel.setFrameSize_((190, ctrl.dirlabel.frame().size.height))
+    ctrl.dirlabel.setFrameSize_((150, ctrl.dirlabel.frame().size.height))
     ctrl.dirlabel.setLineBreakMode_(NSLineBreakByTruncatingMiddle)
     choose = _button("Choose…", ctrl, "chooseFolder:")
-    return _group(view, y, "Saved media", [("Folder", _hstack(ctrl.dirlabel, choose))])
+    reveal = _button("Open", ctrl, "openFolder:")
+    return _group(view, y, "Saved media", [("Folder", _hstack(ctrl.dirlabel, choose, reveal))])
 
 
 def _devices_page(ctrl, view, y):
@@ -316,6 +331,7 @@ def _refresh_destinations(ctrl):
     ctrl.popup.addItemsWithTitles_(names or ["None yet"])
     ctrl.popup.setEnabled_(bool(names))
     ctrl.destbtns.setEnabled_forSegment_(bool(names), 1)
+    ctrl.testbtn.setEnabled_(bool(names))
 
 
 def _refresh_perms(ctrl):

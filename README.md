@@ -127,10 +127,19 @@ Privacy & Security › Open Anyway** (macOS 15+ dropped right-click → Open).
 ## Releasing (admin-initiated)
 
 GitHub → **Actions → Release unplugg → Run workflow**, type the version. It
-builds on Apple Silicon **and** Intel runners and attaches both zips to a
-`v<version>` GitHub Release. See `.github/workflows/release.yml` for the
-optional Developer-ID signing + notarization steps.
+builds on Apple Silicon **and** Intel runners and attaches both zips, each
+with a `.sha256`, to a `v<version>` GitHub Release.
 
-> Per-arch builds, not one universal2 binary: OpenCV and PyObjC don't reliably
-> ship universal2 wheels, so a single universal build is flaky. Two native
-> builds are honest and actually work.
+There's no Apple Developer ID (it costs $99/yr), so releases aren't notarized.
+People open a download once via **Open Anyway** (above).
+
+So grants survive updates, sign every release with the same certificate. Once:
+1. Keychain Access › My Certificates › `unplugg dev` › **Export**, as a .p12 with a password.
+2. `base64 -i unplugg-dev.p12 | pbcopy`
+3. Repo **Settings › Secrets and variables › Actions**: add `UNPLUGG_CERT_P12`
+   (paste) and `UNPLUGG_CERT_PASSWORD`.
+
+Without them, releases are ad-hoc signed and macOS asks again after each update.
+
+> Per-arch builds, not one universal2 binary: hidapi (behind the lid-angle
+> sensor) ships no universal2 wheel. Two native builds work.

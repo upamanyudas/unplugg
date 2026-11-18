@@ -3,10 +3,15 @@ name: Release unplugg
 # Admin-initiated: run from the Actions tab, type the version. Builds the .app
 # on both Apple Silicon and Intel runners and attaches both to a GitHub Release.
 #
-# ponytail: per-arch builds instead of a single "universal2" binary. opencv and
-# pyobjc don't reliably ship universal2 wheels, so a real universal2 py2app build
-# is flaky. Two native builds are honest and actually work. Revisit if every
-# dependency gains universal2 wheels.
+# ponytail: per-arch builds instead of a single "universal2" binary. hidapi (the
+# lid-angle sensor's dependency) ships no universal2 wheel, so a universal2
+# py2app build would mean compiling it for both archs by hand. Two native builds
+# work. Revisit if hidapi gains a universal2 wheel.
+#
+# No Apple Developer ID ($99/yr), so the app isn't notarized: people open it once
+# via System Settings › Privacy & Security › Open Anyway. If the UNPLUGG_CERT_P12
+# secret holds the "unplugg dev" certificate, setup.py signs with it, so every
+# release keeps one identity and camera, mic and location grants survive updates.
 on:
   workflow_dispatch:
     inputs:
@@ -19,11 +24,14 @@ jobs:
     strategy:
       matrix:
         include:
-          - runner: macos-14   # Apple Silicon (arm64)
+          - runner: macos-26        # Apple Silicon (arm64)
             arch: arm64
-          - runner: macos-13   # Intel (x86_64)
+          - runner: macos-26-intel  # Intel (x86_64)
             arch: x86_64
     runs-on: ${{ matrix.runner }}
+    env:  # a step's `if:` can't read secrets, but it can read env
+      CERT_P12: ${{ secrets.UNPLUGG_CERT_P12 }}
+      CERT_PASSWORD: ${{ secrets.UNPLUGG_CERT_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -33,6 +41,16 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+      - name: Import the signing certificate
+        if: env.CERT_P12 != ''
+        run: |
+          KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
+          echo "$CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p ci "$KEYCHAIN"
+          security unlock-keychain -p ci "$KEYCHAIN"
+          security import "$RUNNER_TEMP/cert.p12" -P "$CERT_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN"
+          security set-key-partition-list -S apple-tool:,apple: -k ci "$KEYCHAIN"
+          security list-keychain -d user -s "$KEYCHAIN"
       - name: Stamp version
         run: |
           sed -i '' "s/1\.0\.0/${{ inputs.version }}/g" setup.py
@@ -41,14 +59,13 @@ jobs:
       - name: Zip
         run: |
           cd dist
-          ditto -c -k --keepParent unplugg.app "unplugg-${{ inputs.version }}-${{ matrix.arch }}.zip"
+          ZIP="unplugg-${{ inputs.version }}-${{ matrix.arch }}.zip"
+          ditto -c -k --keepParent unplugg.app "$ZIP"
+          shasum -a 256 "$ZIP" > "$ZIP.sha256"  # not notarized: lets people check the download
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: "v${{ inputs.version }}"
-          files: dist/*.zip
+          files: dist/unplugg-*
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-# Notarization (optional): add a "codesign --deep --sign <Developer ID>" step and
-# an "xcrun notarytool submit" step before zipping, using APPLE_ID / TEAM_ID /
-# APP_PASSWORD secrets. Unsigned apps open via Privacy & Security > Open Anyway.

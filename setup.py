@@ -1,8 +1,8 @@
 """py2app build config.  Build:  python setup.py py2app
 
 ponytail: usage-description plist keys are NOT optional — without them macOS
-silently denies camera/location and the alarm captures nothing. They earn their
-place.
+silently denies camera/location, and kills the app the moment it asks for the
+microphone. They earn their place.
 """
 from setuptools import setup
 
@@ -31,6 +31,8 @@ OPTIONS = {
         "LSUIElement": True,                  # menu-bar only, no Dock icon
         "NSCameraUsageDescription":
             "unplugg captures photos and video when your Mac is disturbed.",
+        "NSMicrophoneUsageDescription":
+            "unplugg records sound with the video when your Mac is disturbed.",
         "NSLocationUsageDescription":
             "unplugg includes your Mac's location in the alert you receive.",
         "NSLocationWhenInUseUsageDescription":

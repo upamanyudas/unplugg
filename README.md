@@ -2,19 +2,25 @@
   <img src="assets/logo.png" width="160" alt="unplugg app icon">
 </p>
 <h1 align="center">unplugg</h1>
-<p align="center">Your Mac, guarded while you step away.</p>
+<p align="center">Your laptop, guarded while you step away.</p>
 
-A menu bar app for MacBooks. Arm it before you leave your Mac in a café or
-library. If someone unplugs the charger or moves the screen, unplugg:
+A menu bar and tray app for MacBooks, Windows 10+ laptops and Linux laptops.
+Arm it before you leave your laptop in a café or library. If someone unplugs
+the charger, moves the screen or closes the lid, unplugg:
 
 - sounds a siren at full volume
 - records photos and a 10-second video with sound
 - sends them to your phone on Telegram, with a map link
-- locks the Mac, if you want
+- locks the laptop, if you want
 
-Only you can turn it off, with Touch ID or your password.
+Only you can turn it off: Touch ID, Windows Hello or your password.
+
+While armed, the laptop stays awake. On Windows and Linux, the lid and power
+button stop sleeping it, and a shutdown attempt sets off the alarm.
 
 ## Install
+
+### macOS
 
 **Homebrew**
 
@@ -34,10 +40,55 @@ open it, go to **System Settings › Privacy & Security › Open Anyway**.
 Screen-move detection in degrees needs a 2019 or newer MacBook. Older ones
 detect the lid closing.
 
+### Windows 10 and 11
+
+**Scoop**
+
+```powershell
+scoop bucket add unplugg https://github.com/upamanyudas/unplugg
+scoop install unplugg/unplugg
+```
+
+**Download:** `unplugg-windows-x64-setup.exe` from
+[Releases](https://github.com/upamanyudas/unplugg/releases/latest). No admin
+needed. Or `unplugg-windows-x64.zip` to run without installing.
+
+unplugg isn't signed yet. The first time, SmartScreen says "Windows protected
+your PC": click **More info › Run anyway**.
+
+New tray icons hide under the **^** arrow. Drag unplugg onto the taskbar.
+
+### Linux (x86_64)
+
+**Homebrew**
+
+```bash
+brew tap upamanyudas/unplugg https://github.com/upamanyudas/unplugg
+brew trust --cask upamanyudas/unplugg/unplugg
+brew install --cask upamanyudas/unplugg/unplugg
+```
+
+**Download** from [Releases](https://github.com/upamanyudas/unplugg/releases/latest):
+
+- `unplugg-linux-x86_64.AppImage`: any distro, no install. `chmod +x` it, then run it.
+- `unplugg-linux-amd64.deb`: Ubuntu, Debian. `sudo apt install ./unplugg-linux-amd64.deb`
+- `unplugg-linux-x86_64.rpm`: Fedora, openSUSE. `sudo dnf install ./unplugg-linux-x86_64.rpm`
+
+Needs glibc 2.35+ (Ubuntu 22.04, Debian 12, Fedora 36 or newer).
+
+- **GNOME:** tray icons need the AppIndicator extension. Ubuntu has it already.
+- **Disarming:** the .deb and .rpm use your desktop's own password dialog. The
+  AppImage and Homebrew ask in unplugg's own box.
+- **Siren volume** needs `pactl` (`pulseaudio-utils`). Most desktops have it.
+- **AppImage on Ubuntu 24.04+ (X11):** `sudo apt install libxcb-cursor0` if it won't start.
+
+Windows and Linux detect the lid closing. 2-in-1s with a motion sensor also
+alarm when picked up.
+
 ## Set up
 
 A setup guide opens on first launch: permissions, Telegram, launch at login.
-Reopen it from the menu bar with **Setup Guide…**. Every permission is optional.
+Reopen it from the menu with **Setup Guide…**. Every permission is optional.
 
 ### Telegram in 60 seconds
 
@@ -64,10 +115,15 @@ Bots can't send high-priority messages, so this is a one-time phone setting:
 unplugg checks GitHub once a day and shows what's new: install, skip, or later.
 **Settings › General** can install updates on their own, never while armed.
 
+The Mac app, the Windows installer and the AppImage update themselves. Scoop,
+Homebrew on Linux, .deb and .rpm update the usual way: `scoop update unplugg`,
+`brew upgrade unplugg`, or the new package from Releases.
+
 ## Privacy
 
 No accounts, no analytics, no servers of its own. Photos and video stay in
-`~/Pictures/unplugg` and go only to your Telegram bot. Update checks ask GitHub.
+`Pictures/unplugg` in your home folder and go only to your Telegram bot.
+Update checks ask GitHub.
 
 ## Contributing
 

@@ -1,0 +1,30 @@
+{
+  "version": "1.0.0",
+  "description": "Guards a laptop while you step away: a siren, photos, video and location to Telegram.",
+  "homepage": "https://github.com/upamanyudas/unplugg",
+  "license": "MIT",
+  "architecture": {
+    "64bit": {
+      "url": "https://github.com/upamanyudas/unplugg/releases/download/v1.0.0/unplugg-windows-x64.zip",
+      "hash": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  },
+  "extract_dir": "unplugg",
+  "shortcuts": [
+    [
+      "unplugg.exe",
+      "unplugg"
+    ]
+  ],
+  "checkver": "github",
+  "autoupdate": {
+    "architecture": {
+      "64bit": {
+        "url": "https://github.com/upamanyudas/unplugg/releases/download/v$version/unplugg-windows-x64.zip"
+      }
+    },
+    "hash": {
+      "url": "$url.sha256"
+    }
+  }
+}

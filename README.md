@@ -18,7 +18,7 @@ link, and pushes a Telegram alert — then optionally locks the Mac.
 | Screen on older Macs | ✅ falls back to closed/open detection (no degrees) |
 | Siren | ✅ seamless NSSound loop at full volume on the chosen output, within ~0.25 s |
 | Photo + 10s video **with audio** | ✅ AVFoundation, built in: nothing to install |
-| Pick camera / mic / speaker | ✅ AVFoundation + SwitchAudioSource; built-in camera and mic by default |
+| Pick camera / mic / speaker | ✅ AVFoundation + CoreAudio; built-in camera and mic by default |
 | Permissions setup (camera/mic/location) | ✅ setup guide on first launch, then Settings → Permissions |
 | Location in the alert | ✅ **CoreLocation** → Google Maps link |
 | "Turn on Find My + live link" | ❌ **No Apple API exists.** Replaced by the CoreLocation link above. |
@@ -70,7 +70,6 @@ Edit the logo, then run `python3 _design/icons.py` (needs Sketch, Xcode 26+,
 ## Run from source
 
 ```bash
-brew install switchaudio-osx               # siren speaker routing (optional)
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 python main.py

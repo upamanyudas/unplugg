@@ -4,10 +4,8 @@ pybooklid>=0.1               # lid-angle sensor (2019+ Macs); falls back gracefu
 pyobjc-framework-Cocoa>=10
 pyobjc-framework-CoreLocation>=10
 pyobjc-framework-AVFoundation>=10   # camera + mic: permissions, devices, recording
+pyobjc-framework-CoreMedia>=10      # recording length, still times
+pyobjc-framework-CoreAudio>=10      # speaker list, siren output
 pyobjc-framework-Quartz>=10         # overlay status pulse, JPEG stills
 pyobjc-framework-LocalAuthentication>=10  # Touch ID / password gate to disarm
 py2app>=0.28                 # build only
-
-# External CLI (Homebrew) — route the siren speaker:
-#   brew install switchaudio-osx
-# Optional: without SwitchAudioSource, the siren plays on the system default output.

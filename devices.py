@@ -2,51 +2,23 @@
 
 Cameras + microphones come from AVFoundation and are saved by name: names
 survive an iPhone or AirPods showing up, list indices shift (index 0 was the
-iPhone mic). Speakers come from
-SwitchAudioSource; without it the list is empty and the UI shows "System default".
-
-ponytail: shell out to SwitchAudioSource instead of binding CoreAudio — it
-dodges ~100 lines of untested struct marshaling for a list of names.
+iPhone mic). Speakers come from CoreAudio, also by name, and the siren's pick
+becomes the default output while it sounds.
 """
-import os
-import shutil
-import subprocess
+import struct
 
+import objc
 from AVFoundation import AVCaptureDevice, AVMediaTypeAudio, AVMediaTypeVideo
+from CoreAudio import (
+    AudioObjectGetPropertyData, AudioObjectGetPropertyDataSize, AudioObjectPropertyAddress,
+    AudioObjectSetPropertyData, kAudioDevicePropertyStreams,
+    kAudioHardwarePropertyDefaultOutputDevice, kAudioHardwarePropertyDevices,
+    kAudioObjectPropertyElementMain, kAudioObjectPropertyName, kAudioObjectPropertyScopeGlobal,
+    kAudioObjectPropertyScopeOutput, kAudioObjectSystemObject,
+)
 
-BREW_BINS = ("/opt/homebrew/bin", "/usr/local/bin")
 BUILT_IN = int.from_bytes(b"bltn", "big")  # kIOAudioDeviceTransportTypeBuiltIn
 
-
-def _find(name):
-    """which() first, then the Homebrew bins — a GUI/.app launch has a minimal
-    PATH that omits /opt/homebrew/bin, which is why enumeration came back empty."""
-    hit = shutil.which(name)
-    if hit:
-        return hit
-    for d in BREW_BINS:
-        p = os.path.join(d, name)
-        if os.path.exists(p):
-            return p
-    return None
-
-
-def _env():
-    """Subprocess env with the Homebrew bins on PATH, so child tools resolve too."""
-    e = dict(os.environ)
-    e["PATH"] = ":".join(BREW_BINS) + ":" + e.get("PATH", "")
-    return e
-
-
-def _run(args, timeout=10):
-    try:
-        return subprocess.run(args, capture_output=True, text=True,
-                              env=_env(), timeout=timeout).stdout
-    except Exception:
-        return ""
-
-
-SWITCH = _find("SwitchAudioSource")
 
 def _capture(media):
     return list(AVCaptureDevice.devicesWithMediaType_(media))
@@ -83,18 +55,43 @@ def device(media, name):
 
 
 def speakers():
-    sw = _find("SwitchAudioSource")
-    if not sw:
-        return []
-    return [l.strip() for l in _run([sw, "-a", "-t", "output"]).splitlines() if l.strip()]
+    return list(_outputs())
 
 
 def current_speaker():
-    sw = _find("SwitchAudioSource")
-    return _run([sw, "-c", "-t", "output"]).strip() or None if sw else None
+    default = struct.unpack("I", _get(kAudioObjectSystemObject, kAudioHardwarePropertyDefaultOutputDevice))[0]
+    return next((name for name, i in _outputs().items() if i == default), None)
 
 
 def set_speaker(name):
-    sw = _find("SwitchAudioSource")
-    if sw and name:
-        _run([sw, "-t", "output", "-s", name])
+    device_id = _outputs().get(name)
+    if device_id is not None:
+        AudioObjectSetPropertyData(kAudioObjectSystemObject, _address(
+            kAudioHardwarePropertyDefaultOutputDevice), 0, b"", 4, struct.pack("I", device_id))
+
+
+def _outputs():
+    """{name: CoreAudio id} of every device that can play sound."""
+    raw = _get(kAudioObjectSystemObject, kAudioHardwarePropertyDevices)
+    ids = struct.unpack(f"{len(raw) // 4}I", raw)
+    return {_name(i): i for i in ids
+            if _get(i, kAudioDevicePropertyStreams, kAudioObjectPropertyScopeOutput)}
+
+
+def _name(device_id):
+    pointer = struct.unpack("P", _get(device_id, kAudioObjectPropertyName))[0]
+    return str(objc.objc_object(c_void_p=pointer))  # the bytes hold a CFStringRef
+
+
+def _address(selector, scope=kAudioObjectPropertyScopeGlobal):
+    return AudioObjectPropertyAddress(selector, scope, kAudioObjectPropertyElementMain)
+
+
+def _get(obj, selector, scope=kAudioObjectPropertyScopeGlobal):
+    """A CoreAudio property's raw bytes; b"" when it has none."""
+    address = _address(selector, scope)
+    err, size = AudioObjectGetPropertyDataSize(obj, address, 0, b"", None)
+    if err or not size:
+        return b""
+    err, _, data = AudioObjectGetPropertyData(obj, address, 0, b"", size, None)
+    return b"" if err else bytes(data)

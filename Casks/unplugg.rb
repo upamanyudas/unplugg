@@ -1,10 +1,12 @@
 cask "unplugg" do
   arch arm: "arm64", intel: "x86_64"
 
-  version :latest # the app updates itself, so the cask never needs a bump
-  sha256 :no_check
+  # the release workflow writes version and sha256
+  version "1.0.0"
+  sha256 arm:   "0000000000000000000000000000000000000000000000000000000000000000",
+         intel: "0000000000000000000000000000000000000000000000000000000000000000"
 
-  url "https://github.com/upamanyudas/unplugg/releases/latest/download/unplugg-#{arch}.dmg"
+  url "https://github.com/upamanyudas/unplugg/releases/download/v#{version}/unplugg-#{arch}.dmg"
   name "unplugg"
   desc "Menu bar alarm that guards a MacBook while you step away"
   homepage "https://github.com/upamanyudas/unplugg"

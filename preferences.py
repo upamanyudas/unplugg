@@ -142,6 +142,7 @@ class _Prefs(NSObject):
 
     def windowDidBecomeKey_(self, _):
         _refresh_perms(self)  # pick up changes made in System Settings
+        permissions.listener = lambda: _refresh_perms(self)  # and prompt answers
 
     def windowWillClose_(self, _):
         global _controller

@@ -196,8 +196,11 @@ def _general_page(ctrl, view, y):
     y = _group(view, y, "While armed", [
         ("Show overlay", _switch(ctrl, "show_overlay")),
         ("Lock Mac when triggered", _switch(ctrl, "lock_device"))])
-    return _group(view, y, None, [("Show in Dock", _switch(ctrl, "show_in_dock")),
-                                  ("Launch at login", _switch(ctrl, "launch_at_login"))])
+    y = _group(view, y, None, [("Show in Dock", _switch(ctrl, "show_in_dock")),
+                               ("Launch at login", _switch(ctrl, "launch_at_login"))])
+    return _group(view, y, "Updates", [
+        ("Check for updates automatically", _switch(ctrl, "check_updates")),
+        ("Install updates automatically", _switch(ctrl, "auto_update"))])
 
 
 def _alerts_page(ctrl, view, y):

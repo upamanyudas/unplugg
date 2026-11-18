@@ -6,7 +6,7 @@ import rumps
 from AppKit import NSProcessInfo, NSTerminateCancel, NSTerminateNow
 from PyObjCTools import AppHelper
 
-from . import alarm, auth, dialogs, overlay, sensors
+from . import alarm, auth, dialogs, overlay, sensors, updater
 from .config import load_config, save_config
 from .guide import open_guide
 from .monitor import Monitor
@@ -39,6 +39,7 @@ class UnpluggApp(rumps.App):
         AppHelper.callLater(1, alarm.prepare)  # after launch, so the icon shows first
         if not self.config["setup_done"]:
             AppHelper.callLater(1, open_guide, self)
+        AppHelper.callLater(10, updater.schedule, self)  # once launch has settled
         self.toggle = rumps.MenuItem("Activate", callback=self._toggle_activate)
         self.menu = [
             self.toggle,
@@ -46,6 +47,7 @@ class UnpluggApp(rumps.App):
             rumps.MenuItem(SETTINGS, callback=lambda _: open_preferences(self), key=","),
             None,
             rumps.MenuItem("About…", callback=lambda _: dialogs.show_about()),
+            rumps.MenuItem("Check for Updates…", callback=lambda _: updater.check(self, manual=True)),
             rumps.MenuItem("Setup Guide…", callback=lambda _: open_guide(self)),
             rumps.MenuItem("Help…", callback=lambda _: dialogs.show_help()),
             rumps.MenuItem("Quit", callback=self._quit, key="q"),

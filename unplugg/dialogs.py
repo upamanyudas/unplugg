@@ -54,9 +54,13 @@ def install_main_menu():
     NSApplication.sharedApplication().setMainMenu_(bar)
 
 
-def alert(title, text, *buttons):
-    """Show an alert; returns the index of the button clicked (0 = first)."""
-    return _alert(title, text, *buttons).runModal() - NSAlertFirstButtonReturn
+def alert(title, text, *buttons, accessory=None):
+    """Show an alert, with an optional view under the text; returns the index of
+    the button clicked (0 = first)."""
+    a = _alert(title, text, *buttons)
+    if accessory:
+        a.setAccessoryView_(accessory)
+    return a.runModal() - NSAlertFirstButtonReturn
 
 
 def _alert(title, text, *buttons):

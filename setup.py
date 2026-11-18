@@ -35,6 +35,7 @@ OPTIONS = {
         "CFBundleIconName": "unplugg",       # icon inside Assets.car
         "CFBundleVersion": "1.0.0",
         "CFBundleShortVersionString": "1.0.0",
+        "NSHumanReadableCopyright": "Copyright © 2025 Upa Das. MIT License.",  # About shows it
         "LSMinimumSystemVersion": "10.15",   # Catalina
         "LSUIElement": True,                  # menu-bar only, no Dock icon
         "NSCameraUsageDescription":

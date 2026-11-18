@@ -4,8 +4,10 @@ Needs Sketch, Xcode 26+ and `brew install imagemagick librsvg`.
 
 unplugg.sketch  → logo.png + logo.icns (macOS 10.15–15, refit to Apple's squircle grid;
                   the .sketch is kept out of git, so only its owner can re-run this step)
+                  + logo.ico           (Windows)
 unplugg.icon    → Assets.car           (macOS 26+, Liquid Glass light/dark/clear/tinted)
 menubar*.svg    → menubar*.pdf         (status item: idle + armed templates, red alarm)
+                  + a copy in assets   (Windows and Linux tray)
 plus the Telegram bot avatar and GitHub social preview, written next to this file.
 """
 import json
@@ -79,6 +81,8 @@ def main():
                     iconset / f"icon_{pt}x{pt}{suffix}.png")
         run("iconutil", "-c", "icns", iconset, "-o", ASSETS / "logo.icns")
         shutil.copy(iconset / "icon_512x512@2x.png", ASSETS / "logo.png")
+        run("magick", ASSETS / "logo.png", "-define", "icon:auto-resize=256,64,48,32,24,16",
+            ASSETS / "logo.ico")
 
         run("xcrun", "actool", DESIGN / "unplugg.icon", "--compile", tmp, "--app-icon", "unplugg",
             "--platform", "macosx", "--target-device", "mac",
@@ -87,6 +91,7 @@ def main():
 
         for name in ("menubar", "menubar_armed", "menubar_alarm"):
             run("rsvg-convert", "-f", "pdf", DESIGN / f"{name}.svg", "-o", ASSETS / f"{name}.pdf")
+            shutil.copy(DESIGN / f"{name}.svg", ASSETS)  # the Windows and Linux tray tints these
 
         # Telegram crops bot photos to a circle, so use the plate face edge to edge.
         run("magick", master, "-crop", "1648x1648+200+200", "+repage", "-background", "#e4e5ea",

@@ -1,8 +1,8 @@
 name: Release unplugg
 
-# Admin-initiated: run from the Actions tab, type the version. Builds the .app
-# on both Apple Silicon and Intel runners and attaches a .dmg of each to a
-# GitHub Release.
+# Admin-initiated: run from the Actions tab, pick a bump or type a version.
+# Builds the .app on Apple Silicon and Intel runners. Only once both pass does it
+# commit the version to setup.py and the cask, tag it and publish a .dmg of each.
 #
 # ponytail: per-arch builds instead of a single "universal2" binary. hidapi (the
 # lid-angle sensor's dependency) ships no universal2 wheel, so a universal2
@@ -16,12 +16,52 @@ name: Release unplugg
 on:
   workflow_dispatch:
     inputs:
+      bump:
+        description: "Bump the version in setup.py"
+        type: choice
+        options: [patch, minor, major]
+        default: patch
       version:
-        description: "Version, e.g. 1.0.0"
-        required: true
+        description: "Or an exact version, e.g. 1.0.0 (overrides the bump)"
+        required: false
+
+permissions:
+  contents: write  # push the version commit and tag, create the release
 
 jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      current: ${{ steps.next.outputs.current }}
+      version: ${{ steps.next.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: next
+        env:
+          BUMP: ${{ inputs.bump }}
+          EXACT: ${{ inputs.version }}
+        run: |
+          CURRENT=$(sed -n 's/.*"CFBundleShortVersionString": "\([^"]*\)".*/\1/p' setup.py)
+          IFS=. read -r MAJOR MINOR PATCH <<< "$CURRENT"
+          case "$BUMP" in
+            major) NEXT="$((MAJOR + 1)).0.0" ;;
+            minor) NEXT="$MAJOR.$((MINOR + 1)).0" ;;
+            patch) NEXT="$MAJOR.$MINOR.$((PATCH + 1))" ;;
+          esac
+          VERSION="${EXACT:-$NEXT}"
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::$VERSION isn't X.Y.Z"
+            exit 1
+          fi
+          if git ls-remote --exit-code --tags origin "v$VERSION"; then
+            echo "::error::v$VERSION is already released"
+            exit 1
+          fi
+          echo "current=$CURRENT" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
   build:
+    needs: version
     strategy:
       matrix:
         include:
@@ -33,6 +73,8 @@ jobs:
     env:  # a step's `if:` can't read secrets, but it can read env
       CERT_P12: ${{ secrets.UNPLUGG_CERT_P12 }}
       CERT_PASSWORD: ${{ secrets.UNPLUGG_CERT_PASSWORD }}
+      CURRENT: ${{ needs.version.outputs.current }}
+      VERSION: ${{ needs.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -53,12 +95,10 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple: -k ci "$KEYCHAIN"
           security list-keychain -d user -s "$KEYCHAIN"
       - name: Stamp version
-        run: |
-          sed -i '' "s/1\.0\.0/${{ inputs.version }}/g" setup.py
+        run: sed -i '' "s/\"$CURRENT\"/\"$VERSION\"/" setup.py
       - name: Build .app
         run: python setup.py py2app
-      # a fixed name, so releases/latest/download/… always points at the newest:
-      # the Homebrew cask and the in-app updater both rely on it
+      # a fixed name per arch: the in-app updater picks this Mac's dmg by it
       - name: Disk image
         run: |
           mkdir dmg
@@ -70,11 +110,37 @@ jobs:
             sleep 5
           done
           cd dist
-          shasum -a 256 "$DMG" > "$DMG.sha256"  # the updater checks it; people can too
+          shasum -a 256 "$DMG" > "$DMG.sha256"  # the updater and the cask check it
+      - uses: actions/upload-artifact@v7
+        with:
+          name: unplugg-${{ matrix.arch }}
+          path: dist/unplugg-${{ matrix.arch }}.dmg*
+
+  publish:
+    needs: [version, build]
+    runs-on: ubuntu-latest
+    env:
+      CURRENT: ${{ needs.version.outputs.current }}
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Commit the version and the cask
+        run: |
+          ARM=$(cut -d ' ' -f 1 dist/unplugg-arm64.dmg.sha256)
+          INTEL=$(cut -d ' ' -f 1 dist/unplugg-x86_64.dmg.sha256)
+          sed -i "s/\"$CURRENT\"/\"$VERSION\"/" setup.py Casks/unplugg.rb
+          sed -i -E "s/(arm: +)\"[0-9a-f]{64}\"/\1\"$ARM\"/; s/(intel: +)\"[0-9a-f]{64}\"/\1\"$INTEL\"/" Casks/unplugg.rb
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "release $VERSION"
+          git tag "v$VERSION"
+          git push --atomic origin HEAD "v$VERSION"  # both or neither
       - uses: softprops/action-gh-release@v2
         with:
-          tag_name: "v${{ inputs.version }}"
+          tag_name: v${{ env.VERSION }}
           files: dist/unplugg-*
           generate_release_notes: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

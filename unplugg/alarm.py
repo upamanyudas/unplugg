@@ -7,11 +7,8 @@ classes); trigger() runs on the monitor's background thread and can block.
 from AppKit import NSSound
 from Foundation import NSAppleScript
 
-import capture
-import devices
-import location
-import telegram
-from utils import asset_path, lock_screen
+from . import capture, devices, location, telegram
+from .utils import asset_path, lock_screen
 
 GET_VOLUME = "output volume of (get volume settings)"
 MAX_VOLUME = "set volume output volume 100 without output muted"

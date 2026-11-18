@@ -22,14 +22,9 @@ from AppKit import (
 )
 from Foundation import NSMakeRect, NSObject, NSURL
 
-import devices
-import dialogs
-import loginitem
-import permissions
-import sensors
-import telegram
-from config import save_config
-from utils import show_in_dock
+from . import devices, dialogs, loginitem, permissions, sensors, telegram
+from .config import save_config
+from .utils import show_in_dock
 
 _controller = None  # retain while open
 

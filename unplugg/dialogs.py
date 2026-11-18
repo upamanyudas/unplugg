@@ -17,7 +17,7 @@ from AppKit import (
 from Foundation import NSMakeRect, NSAttributedString, NSObject, NSURL
 from PyObjCTools import AppHelper
 
-import telegram
+from . import telegram
 
 TOKEN_HELP = ("How to get a bot token", "https://core.telegram.org/bots/features#botfather")
 # The Bot API has no priority flag (only disable_notification, which goes quieter),

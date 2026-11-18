@@ -9,7 +9,7 @@ again.
 import threading
 import time
 
-import sensors
+from . import sensors
 
 POLL = 0.2  # s between checks; the siren starts within this
 

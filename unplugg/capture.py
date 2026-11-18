@@ -21,7 +21,7 @@ from CoreMedia import CMTimeMakeWithSeconds
 from Foundation import NSObject, NSURL
 from Quartz import CGImageDestinationAddImage, CGImageDestinationCreateWithURL, CGImageDestinationFinalize
 
-import devices
+from . import devices
 
 _DEFAULT_DIR = Path.home() / "Pictures" / "unplugg"
 GRANTED = 3  # AVAuthorizationStatusAuthorized

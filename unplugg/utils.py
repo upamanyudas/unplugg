@@ -17,7 +17,7 @@ def asset_path(name: str) -> str:
     if getattr(sys, "frozen", False):
         from Foundation import NSBundle
         return os.path.join(NSBundle.mainBundle().resourcePath(), "assets", name)
-    return os.path.join(os.path.dirname(__file__), "assets", name)
+    return os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets", name)  # beside the package
 
 
 def show_in_dock(show: bool) -> None:

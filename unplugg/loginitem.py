@@ -17,7 +17,7 @@ def _program() -> str:
     if getattr(sys, "frozen", False):
         # sys.executable -> Foo.app/Contents/MacOS/Foo ; open the .app
         return str(Path(sys.executable).parents[2])
-    return str(Path(__file__).with_name("main.py"))
+    return str(Path(__file__).parents[1] / "main.py")
 
 
 def enable() -> None:

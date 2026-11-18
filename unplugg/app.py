@@ -6,16 +6,12 @@ import rumps
 from AppKit import NSProcessInfo, NSTerminateCancel, NSTerminateNow
 from PyObjCTools import AppHelper
 
-import alarm
-import auth
-import dialogs
-import overlay
-import sensors
-from config import load_config, save_config
-from guide import open_guide
-from monitor import Monitor
-from preferences import open_preferences
-from utils import asset_path, show_in_dock
+from . import alarm, auth, dialogs, overlay, sensors
+from .config import load_config, save_config
+from .guide import open_guide
+from .monitor import Monitor
+from .preferences import open_preferences
+from .utils import asset_path, show_in_dock
 
 # outline = idle, filled = armed, red = alarm fired
 GLYPHS = {"idle": "menubar.pdf", "armed": "menubar_armed.pdf", "alarm": "menubar_alarm.pdf"}

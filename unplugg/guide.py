@@ -11,12 +11,12 @@ from AppKit import (
 )
 from Foundation import NSMakeRect
 
-from config import save_config
-from preferences import (
+from .config import save_config
+from .preferences import (
     INSET, PAD, TALL, W, _Page, _Prefs, _button, _group, _info, _label, _permissions_page,
     _refresh_perms, _switch, _telegram_group, _tile,
 )
-from utils import show_in_dock
+from .utils import show_in_dock
 
 _guide = None  # retain while open
 

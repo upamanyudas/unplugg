@@ -34,23 +34,28 @@ The lid-angle sensor is undocumented HID, so the app must run **un-sandboxed**
 ## Project layout
 
 ```
-main.py        entry point
-unplugg.py     menu-bar app (rumps) — essentials only: Activate, Settings, About, Setup Guide, Help, Quit
-preferences.py Settings window (System Settings style) — every setting lives here
-guide.py       setup guide: how it works, permissions, Telegram, launch at login
-config.py      settings (JSON in ~/Library/Application Support/unplugg)
-sensors.py     power / lid-angle / clamshell readers (+ fallback)
-monitor.py     polling loop → fires one "unsafe" event
-alarm.py       runs the response: siren, capture, location, telegram, lock
-capture.py     webcam video with sound + stills (AVFoundation)
-location.py    CoreLocation → maps link
-telegram.py    Telegram Bot API
-overlay.py     fullscreen "Protected by unplugg" cover
-dialogs.py     native Telegram setup panel, About, Help
-loginitem.py   launch-at-login LaunchAgent
-utils.py       asset paths, screen lock
-assets/        app icons, menu bar glyphs, siren
-_design/       icon sources + icons.py (rebuilds every icon)
+main.py              entry point (py2app needs a script)
+setup.py             py2app build
+unplugg/
+  app.py             menu-bar app (rumps): Activate, Settings, About, Setup Guide, Help, Quit
+  preferences.py     Settings window (System Settings style), every setting lives here
+  guide.py           setup guide: how it works, permissions, Telegram, launch at login
+  config.py          settings (JSON in ~/Library/Application Support/unplugg)
+  sensors.py         power / lid-angle / clamshell readers (+ fallback)
+  monitor.py         polling loop → fires one "unsafe" event
+  alarm.py           runs the response: siren, capture, location, telegram, lock
+  capture.py         webcam video with sound + stills (AVFoundation)
+  devices.py         cameras, mics, speakers (AVFoundation, CoreAudio)
+  permissions.py     camera / mic / location status and requests
+  location.py        CoreLocation → maps link
+  telegram.py        Telegram Bot API
+  overlay.py         fullscreen "Protected by unplugg" cover
+  dialogs.py         native Telegram setup panel, About, Help
+  auth.py            Touch ID / password gate
+  loginitem.py       launch-at-login LaunchAgent
+  utils.py           asset paths, Dock icon, screen lock
+assets/              app icons, menu bar glyphs, siren
+_design/             icon sources + icons.py (rebuilds every icon)
 ```
 
 ## Icons

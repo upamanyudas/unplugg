@@ -18,20 +18,8 @@ from Foundation import NSMakeRect, NSAttributedString, NSObject, NSURL
 from PyObjCTools import AppHelper
 
 from . import telegram
+from .telegram import LOUD_HELP, TOKEN_HELP
 
-TOKEN_HELP = ("How to get a bot token", "https://core.telegram.org/bots/features#botfather")
-# The Bot API has no priority flag (only disable_notification, which goes quieter),
-# so a loud alert is a setting on the phone.
-LOUD_HELP = (
-    "Telegram bots can't force a loud alert. Set this up once on your phone.\n\n"
-    "iPhone\n"
-    "• Settings › Focus › each Focus › Apps › add Telegram.\n"
-    "• Telegram › Settings › Notifications and Sounds: give your bot's chat a loud sound.\n"
-    "• Silent mode on? Only vibration gets through: "
-    "Settings › Sounds & Haptics › Haptics › Always Play.\n\n"
-    "Android (menu names vary by phone)\n"
-    "• When the first alert arrives, long-press it › Priority.\n"
-    "• Settings › Do Not Disturb › People › Conversations › Priority conversations.")
 MENUS = [
     ("unplugg", [("Hide unplugg", "hide:", "h"), ("Quit unplugg", "terminate:", "q")]),
     ("Edit", [("Undo", "undo:", "z"), ("Redo", "redo:", "Z"), ("Cut", "cut:", "x"),

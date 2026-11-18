@@ -10,7 +10,7 @@ name: Release unplugg
 #
 # No Apple Developer ID ($99/yr), so the app isn't notarized: people open it once
 # via System Settings › Privacy & Security › Open Anyway. If the UNPLUGG_CERT_P12
-# secret holds the "unplugg dev" certificate, setup.py signs with it, so every
+# secret holds the "unplugg cert" certificate, setup.py signs with it, so every
 # release keeps one identity and camera, mic and location grants survive updates.
 on:
   workflow_dispatch:

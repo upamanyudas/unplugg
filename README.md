@@ -117,7 +117,7 @@ python setup.py py2app          # → dist/unplugg.app
 Camera, mic and location grants belong to the app's signature. An ad-hoc one
 changes every build, so macOS asks again. To keep them across rebuilds, make a
 certificate once: **Keychain Access › Certificate Assistant › Create a
-Certificate**, name `unplugg dev`, type **Code Signing**. The build signs with
+Certificate**, name `unplugg cert`, type **Code Signing**. The build signs with
 it whenever it exists.
 
 The "Modules not found" list at the end is normal: optional imports inside
@@ -134,8 +134,8 @@ There's no Apple Developer ID (it costs $99/yr), so releases aren't notarized.
 People open a download once via **Open Anyway** (above).
 
 So grants survive updates, sign every release with the same certificate. Once:
-1. Keychain Access › My Certificates › `unplugg dev` › **Export**, as a .p12 with a password.
-2. `base64 -i unplugg-dev.p12 | pbcopy`
+1. Keychain Access › My Certificates › `unplugg cert` › **Export**, as a .p12 with a password.
+2. `base64 -i unplugg-cert.p12 | pbcopy`
 3. Repo **Settings › Secrets and variables › Actions**: add `UNPLUGG_CERT_P12`
    (paste) and `UNPLUGG_CERT_PASSWORD`.
 

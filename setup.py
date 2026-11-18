@@ -5,7 +5,7 @@ silently denies camera/location, and kills the app the moment it asks for the
 microphone. They earn their place.
 
 An ad-hoc signature changes every build, and macOS forgets those grants with
-it. If this Mac has a code-signing certificate named "unplugg dev", the build
+it. If this Mac has a code-signing certificate named "unplugg cert", the build
 is re-signed with it, so grants survive rebuilds (README › Build the .app).
 """
 import subprocess
@@ -14,7 +14,7 @@ import sys
 from setuptools import setup
 
 APP = ["main.py"]
-DEV_IDENTITY = "unplugg dev"
+IDENTITY = "unplugg cert"
 DATA_FILES = [
     "assets/Assets.car",  # macOS 26+ Liquid Glass icon; older macOS uses logo.icns
     ("assets", [
@@ -57,5 +57,5 @@ setup(
 
 identities = subprocess.run(["security", "find-identity", "-p", "codesigning"],
                             capture_output=True, text=True).stdout
-if "py2app" in sys.argv and f'"{DEV_IDENTITY}"' in identities:
-    subprocess.run(["codesign", "--force", "--sign", DEV_IDENTITY, "dist/unplugg.app"], check=True)
+if "py2app" in sys.argv and f'"{IDENTITY}"' in identities:
+    subprocess.run(["codesign", "--force", "--sign", IDENTITY, "dist/unplugg.app"], check=True)

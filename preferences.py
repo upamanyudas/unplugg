@@ -14,7 +14,7 @@ from pathlib import Path
 
 from AppKit import (
     NSApplication, NSBox, NSBoxSeparator, NSButton, NSColor, NSControlSizeMini, NSFont, NSImage,
-    NSLineBreakByTruncatingMiddle, NSNoTitle, NSOpenPanel, NSPopUpButton, NSSegmentedControl,
+    NSImageScaleProportionallyUpOrDown, NSImageView, NSLineBreakByTruncatingMiddle, NSNoTitle, NSOpenPanel, NSPopUpButton, NSSegmentedControl,
     NSSegmentSwitchTrackingMomentary, NSSlider, NSSwitch, NSTabViewController,
     NSTabViewControllerTabStyleToolbar, NSTabViewItem, NSTextAlignmentRight, NSTextField, NSView,
     NSViewController, NSWindow, NSWindowStyleMaskClosable, NSWindowStyleMaskTitled,
@@ -36,12 +36,14 @@ _controller = None  # retain while open
 W = 480      # pane width
 PAD = 20     # pane margin
 ROW = 36     # grouped-form row height
+TALL = 56    # row with a line of explanation
 INSET = 12   # row padding inside a group
+TILE = 26    # icon tile
 
-PERMS = [
-    ("camera", "Camera"),
-    ("microphone", "Microphone"),
-    ("location", "Location"),
+PERMS = [  # key, label, why, SF Symbol, tile colour
+    ("camera", "Camera", "Photos and video of a thief.", "camera.fill", NSColor.systemGreenColor),
+    ("microphone", "Microphone", "Sound in that video.", "mic.fill", NSColor.systemOrangeColor),
+    ("location", "Location", "A map link to your Mac.", "location.fill", NSColor.systemBlueColor),
 ]
 
 STATUS = {  # permission state → (label, colour)
@@ -210,20 +212,24 @@ def _alerts_page(ctrl, view, y):
         ("Flash screen for photos", _switch(ctrl, "flash_screen")),
         ("Record audio with video", _switch(ctrl, "record_audio")),
         ("Send location", _switch(ctrl, "send_location"))])
-    ctrl.popup = _popup(ctrl, [], 0, None, 150)
-    ctrl.destbtns = NSSegmentedControl.segmentedControlWithImages_trackingMode_target_action_(
-        [NSImage.imageNamed_("NSAddTemplate"), NSImage.imageNamed_("NSRemoveTemplate")],
-        NSSegmentSwitchTrackingMomentary, ctrl, "destEdit:")
-    ctrl.testbtn = _button("Send Test", ctrl, "destTest:")
-    _refresh_destinations(ctrl)
-    y = _group(view, y, "Telegram", [
-        ("Destinations", _hstack(ctrl.popup, ctrl.destbtns, ctrl.testbtn))])
+    y = _telegram_group(ctrl, view, y)
     ctrl.dirlabel = _label(_short(ctrl.cfg["media_dir"]), 12, NSColor.secondaryLabelColor())
     ctrl.dirlabel.setFrameSize_((150, ctrl.dirlabel.frame().size.height))
     ctrl.dirlabel.setLineBreakMode_(NSLineBreakByTruncatingMiddle)
     choose = _button("Choose…", ctrl, "chooseFolder:")
     reveal = _button("Open", ctrl, "openFolder:")
     return _group(view, y, "Saved media", [("Folder", _hstack(ctrl.dirlabel, choose, reveal))])
+
+
+def _telegram_group(ctrl, view, y):
+    ctrl.popup = _popup(ctrl, [], 0, None, 150)
+    ctrl.destbtns = NSSegmentedControl.segmentedControlWithImages_trackingMode_target_action_(
+        [NSImage.imageNamed_("NSAddTemplate"), NSImage.imageNamed_("NSRemoveTemplate")],
+        NSSegmentSwitchTrackingMomentary, ctrl, "destEdit:")
+    ctrl.testbtn = _button("Send Test", ctrl, "destTest:")
+    _refresh_destinations(ctrl)
+    return _group(view, y, "Telegram", [
+        ("Destinations", _hstack(ctrl.popup, ctrl.destbtns, ctrl.testbtn))])
 
 
 def _devices_page(ctrl, view, y):
@@ -244,44 +250,78 @@ def _index(items, name):
 def _permissions_page(ctrl, view, y):
     ctrl.permbtns, ctrl.permrows = {}, {}
     rows = []
-    for key, label in PERMS:
+    for key, label, why, symbol, color in PERMS:
         btn = _button("Open Settings…", ctrl, "permGrant:")
         status = _label("", 12)
-        status.setFrameSize_((110, status.frame().size.height))
+        status.setFrameSize_((100, status.frame().size.height))
         status.setAlignment_(NSTextAlignmentRight)
         ctrl.permbtns[btn] = key
         ctrl.permrows[key] = (status, btn)
-        rows.append((label, _hstack(btn, status)))
-    return _group(view, y, "unplugg needs", rows)
+        control = _hstack(btn, status)
+        width = W - 2 * PAD - 2 * INSET - control.frame().size.width - 8
+        rows.append((_info(label, why, _tile(symbol, color()), width), control))
+    return _group(view, y, "All optional", rows, TALL)
 
 
 # ---- row builders ---------------------------------------------------------
-def _group(view, y, title, rows):
-    """Optional heading, then a rounded box of label/control rows. Returns the next y."""
+def _group(view, y, title, rows, row=ROW):
+    """Optional heading, then a rounded box of label/control rows. Returns the next y.
+    A label is text, or a view such as _info's; a control may be None."""
     if title:
         heading = _label(title, 13, bold=True)
         heading.setFrameOrigin_((PAD + 2, y))
         view.addSubview_(heading)
         y += 22
-    width, height = W - 2 * PAD, ROW * len(rows)
+    width, height = W - 2 * PAD, row * len(rows)
     box = NSBox.alloc().initWithFrame_(NSMakeRect(PAD, y, width, height))
     box.setTitlePosition_(NSNoTitle)
     box.setContentViewMargins_((0, 0))
     inner = box.contentView()
     for i, (text, control) in enumerate(rows):
-        top = height - ROW * i  # the box's own content isn't flipped
+        top = height - row * i  # the box's own content isn't flipped
         if i:
             line = NSBox.alloc().initWithFrame_(NSMakeRect(INSET, top, width - 2 * INSET, 1))
             line.setBoxType_(NSBoxSeparator)
             inner.addSubview_(line)
-        size = control.frame().size
-        control.setFrameOrigin_((width - INSET - size.width, top - (ROW + size.height) / 2))
-        label = _label(text, 13)
-        label.setFrameOrigin_((INSET, top - (ROW + label.frame().size.height) / 2))
+        label = _label(text, 13) if isinstance(text, str) else text
+        label.setFrameOrigin_((INSET, top - (row + label.frame().size.height) / 2))
         inner.addSubview_(label)
-        inner.addSubview_(control)
+        if control:
+            size = control.frame().size
+            control.setFrameOrigin_((width - INSET - size.width, top - (row + size.height) / 2))
+            inner.addSubview_(control)
     view.addSubview_(box)
     return y + height + 20
+
+
+def _info(title, detail, tile, width):
+    """Icon tile, then a title with a short grey line under it."""
+    name = _label(title, 13)
+    why = _label(detail, 11, NSColor.secondaryLabelColor(), width=width - TILE - 10)
+    name.setFrameOrigin_((TILE + 10, 0))
+    why.setFrameOrigin_((TILE + 10, name.frame().size.height + 1))
+    height = name.frame().size.height + 1 + why.frame().size.height
+    tile.setFrameOrigin_((0, (height - TILE) / 2))
+    view = _Page.alloc().initWithFrame_(NSMakeRect(0, 0, width, height))
+    for v in (tile, name, why):
+        view.addSubview_(v)
+    return view
+
+
+def _tile(symbol, color):
+    """White SF Symbol on a coloured rounded square, like System Settings' icons."""
+    tile = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, TILE, TILE))
+    tile.setWantsLayer_(True)
+    tile.layer().setBackgroundColor_(color.CGColor())
+    tile.layer().setCornerRadius_(6)
+    image = _icon(symbol, None)  # None before macOS 11, which has no SF Symbols
+    if image:
+        glyph = NSImageView.imageViewWithImage_(image)
+        glyph.setFrame_(NSMakeRect(5, 5, TILE - 10, TILE - 10))
+        glyph.setImageScaling_(NSImageScaleProportionallyUpOrDown)
+        glyph.setContentTintColor_(NSColor.whiteColor())
+        tile.addSubview_(glyph)
+    return tile
 
 
 def _switch(ctrl, key):
@@ -348,7 +388,8 @@ def _refresh_perms(ctrl):
         status.setStringValue_(text)
         status.setTextColor_(color())
         btn.setHidden_(state == "granted")
-        btn.setTitle_("Grant…" if state == "unset" else "Open Settings…")
+        # not "Allow": the HIG keeps that word for the system's own prompt
+        btn.setTitle_("Request…" if state == "unset" else "Open Settings…")
 
 
 def _short(path):
@@ -361,10 +402,15 @@ def _icon(symbol, fallback):
     return NSImage.imageNamed_(fallback)
 
 
-def _label(text, size, color=None, bold=False):
-    f = NSTextField.labelWithString_(text)
+def _label(text, size, color=None, bold=False, width=None):
+    """One line, or wrapped to `width`."""
+    f = NSTextField.wrappingLabelWithString_(text) if width else NSTextField.labelWithString_(text)
     f.setFont_(NSFont.boldSystemFontOfSize_(size) if bold else NSFont.systemFontOfSize_(size))
     if color:
         f.setTextColor_(color)
-    f.sizeToFit()
+    if width:
+        f.setSelectable_(False)
+        f.setFrameSize_((width, f.cell().cellSizeForBounds_(NSMakeRect(0, 0, width, 1000)).height))
+    else:
+        f.sizeToFit()
     return f

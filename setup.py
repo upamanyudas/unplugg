@@ -26,7 +26,7 @@ DATA_FILES = [
 OPTIONS = {
     "argv_emulation": False,
     "iconfile": "assets/logo.icns",
-    "packages": ["rumps", "requests", "cv2", "pybooklid"],
+    "packages": ["rumps", "requests", "pybooklid"],
     "no_report_missing_conditional_import": True,  # ~40 lines of harmless "missing" noise
     "plist": {
         "CFBundleName": "unplugg",

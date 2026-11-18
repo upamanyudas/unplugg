@@ -1,17 +1,40 @@
 """Webcam capture: a short video (with mic audio) + a few stills pulled from it.
 
-Primary path is ffmpeg's avfoundation input — it records the chosen camera and
-microphone into one mp4 with audio, which OpenCV alone cannot do. Stills are
-extracted from that recording so the camera is opened once. If ffmpeg is missing
-or errors, we fall back to OpenCV for a silent video from the same camera.
+AVFoundation records the chosen camera and microphone into one movie, in-process:
+nothing to install, and the grants are unplugg's own. Stills are taken from that
+recording, so the camera is opened once.
+
+ponytail: AVCaptureMovieFileOutput only writes QuickTime and Telegram only plays
+MP4 inline, so the .mov is remuxed (passthrough, no re-encode).
 """
-import subprocess
+import threading
 from datetime import datetime
 from pathlib import Path
+
+from AVFoundation import (
+    AVAssetExportPresetPassthrough, AVAssetExportSession, AVAssetImageGenerator, AVCaptureDevice,
+    AVCaptureDeviceInput, AVCaptureMovieFileOutput, AVCaptureSession, AVFileTypeMPEG4,
+    AVMediaTypeAudio, AVMediaTypeVideo, AVURLAsset, AVVideoAverageBitRateKey, AVVideoCodecKey,
+    AVVideoCodecTypeH264, AVVideoCompressionPropertiesKey,
+)
+from CoreMedia import CMTimeMakeWithSeconds
+from Foundation import NSObject, NSURL
+from Quartz import CGImageDestinationAddImage, CGImageDestinationCreateWithURL, CGImageDestinationFinalize
 
 import devices
 
 _DEFAULT_DIR = Path.home() / "Pictures" / "unplugg"
+GRANTED = 3  # AVAuthorizationStatusAuthorized
+# the camera's default is ~21 Mbit/s at 1080p, 27 MB a clip: slow to upload mid-theft
+VIDEO = {AVVideoCodecKey: AVVideoCodecTypeH264,
+         AVVideoCompressionPropertiesKey: {AVVideoAverageBitRateKey: 4_000_000}}
+
+
+class _Recorded(NSObject):
+    """AVFoundation calls this on any thread once the movie is fully written."""
+
+    def captureOutput_didFinishRecordingToOutputFileAtURL_fromConnections_error_(self, *_):
+        self.done.set()
 
 
 def _media_dir(config):
@@ -24,57 +47,76 @@ def capture(config, photos: int = 3, video_seconds: int = 10):
     """Record, then return (photo_path, video_path); either may be None."""
     media = _media_dir(config)
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    video = media / f"{stamp}.mp4"
-    cam = devices.camera(config.get("camera", ""))
-
-    if devices.FFMPEG and _ffmpeg_record(config, cam, video, video_seconds):
-        photo = _ffmpeg_stills(media, video, stamp, photos)
-        return photo, video
-    return _opencv_fallback(media, stamp, video, photos, video_seconds, devices.opencv_index(cam))
-
-
-def _ffmpeg_record(config, cam, video, seconds) -> bool:
-    mic = devices.microphone(config.get("mic", "")) if config.get("record_audio", True) else None
-    cmd = [devices.FFMPEG, "-y", "-f", "avfoundation", "-framerate", "30",
-           "-i", f"{cam}:{mic or 'none'}", "-t", str(seconds),
-           "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(video)]
-    try:
-        r = subprocess.run(cmd, capture_output=True, timeout=seconds + 25)
-        return r.returncode == 0 and video.exists()
-    except (subprocess.TimeoutExpired, OSError):
-        return False
-
-
-def _ffmpeg_stills(media, video, stamp, photos):
-    pattern = str(media / f"{stamp}_%d.jpg")
-    subprocess.run([devices.FFMPEG, "-y", "-i", str(video), "-vf", "fps=1",
-                    "-frames:v", str(photos), pattern],
-                   capture_output=True, timeout=30)
-    shots = sorted(media.glob(f"{stamp}_*.jpg"))
-    return shots[-1] if shots else None
-
-
-def _opencv_fallback(media, stamp, video, photos, seconds, index):
-    # ponytail: video-only fallback; audio needs ffmpeg, which we'd have used.
-    import time
-    import cv2
-    cam = cv2.VideoCapture(index)
-    if not cam.isOpened():
+    mov, video = media / f"{stamp}.mov", media / f"{stamp}.mp4"
+    if not _record(config, mov, video_seconds):
         return None, None
+    if _remux(mov, video):
+        mov.unlink()
+    else:
+        video = mov  # still sent, as a file
+    return _stills(video, media, stamp, photos), video
+
+
+def _record(config, path, seconds) -> bool:
+    cam = _input(AVMediaTypeVideo, devices.camera(config.get("camera", "")))
+    if not cam:
+        return False
+    session = AVCaptureSession.alloc().init()
+    session.addInput_(cam)
+    mic = config.get("record_audio", True) and _input(
+        AVMediaTypeAudio, devices.microphone(config.get("mic", "")))
+    if mic:
+        session.addInput_(mic)
+    output = AVCaptureMovieFileOutput.alloc().init()
+    output.setMaxRecordedDuration_(CMTimeMakeWithSeconds(seconds, 600))
+    session.addOutput_(output)
+    output.setOutputSettings_forConnection_(VIDEO, output.connectionWithMediaType_(AVMediaTypeVideo))
+    session.startRunning()
+    recorded = _Recorded.alloc().init()
+    recorded.done = threading.Event()
+    output.startRecordingToOutputFileURL_recordingDelegate_(_url(path), recorded)
+    recorded.done.wait(seconds + 15)
+    session.stopRunning()
+    return path.exists()
+
+
+def _input(media, name):
+    """Capture input for a device that's already allowed, else None. Never asks:
+    a permission prompt mid-alarm would only tip off the thief."""
+    device = devices.device(media, name)
+    if device is None or AVCaptureDevice.authorizationStatusForMediaType_(media) != GRANTED:
+        return None
+    return AVCaptureDeviceInput.deviceInputWithDevice_error_(device, None)[0]
+
+
+def _remux(src, dst) -> bool:
+    export = AVAssetExportSession.exportSessionWithAsset_presetName_(
+        _asset(src), AVAssetExportPresetPassthrough)
+    export.setOutputURL_(_url(dst))
+    export.setOutputFileType_(AVFileTypeMPEG4)
+    done = threading.Event()
+    export.exportAsynchronouslyWithCompletionHandler_(done.set)
+    done.wait(30)
+    return dst.exists()
+
+
+def _stills(video, media, stamp, count):
+    """A frame at 1 s, 2 s, 3 s…; returns the last, once exposure has settled."""
+    frames = AVAssetImageGenerator.assetImageGeneratorWithAsset_(_asset(video))
     photo = None
-    for i in range(photos):
-        ok, frame = cam.read()
-        if ok:
+    for i in range(1, count + 1):
+        image = frames.copyCGImageAtTime_actualTime_error_(CMTimeMakeWithSeconds(i, 600), None, None)[0]
+        if image:
             photo = media / f"{stamp}_{i}.jpg"
-            cv2.imwrite(str(photo), frame)
-    w = int(cam.get(cv2.CAP_PROP_FRAME_WIDTH)) or 640
-    h = int(cam.get(cv2.CAP_PROP_FRAME_HEIGHT)) or 480
-    out = cv2.VideoWriter(str(video), cv2.VideoWriter_fourcc(*"mp4v"), 20.0, (w, h))
-    end = time.time() + seconds
-    wrote = False
-    while time.time() < end:
-        ok, frame = cam.read()
-        if ok:
-            out.write(frame); wrote = True
-    out.release(); cam.release()
-    return photo, (video if wrote else None)
+            jpeg = CGImageDestinationCreateWithURL(_url(photo), "public.jpeg", 1, None)
+            CGImageDestinationAddImage(jpeg, image, None)
+            CGImageDestinationFinalize(jpeg)
+    return photo
+
+
+def _url(path):
+    return NSURL.fileURLWithPath_(str(path))
+
+
+def _asset(path):
+    return AVURLAsset.URLAssetWithURL_options_(_url(path), None)

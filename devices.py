@@ -1,8 +1,8 @@
 """Enumerate capture/output devices for the Preferences pickers.
 
-Cameras + microphones come from AVFoundation, by name. ffmpeg's avfoundation
-input matches devices by name, and names survive an iPhone or AirPods showing
-up; list indices shift (index 0 was the iPhone mic). Speakers come from
+Cameras + microphones come from AVFoundation and are saved by name: names
+survive an iPhone or AirPods showing up, list indices shift (index 0 was the
+iPhone mic). Speakers come from
 SwitchAudioSource; without it the list is empty and the UI shows "System default".
 
 ponytail: shell out to SwitchAudioSource instead of binding CoreAudio — it
@@ -12,7 +12,7 @@ import os
 import shutil
 import subprocess
 
-from AVFoundation import AVCaptureDevice, AVMediaTypeAudio, AVMediaTypeMuxed, AVMediaTypeVideo
+from AVFoundation import AVCaptureDevice, AVMediaTypeAudio, AVMediaTypeVideo
 
 BREW_BINS = ("/opt/homebrew/bin", "/usr/local/bin")
 BUILT_IN = int.from_bytes(b"bltn", "big")  # kIOAudioDeviceTransportTypeBuiltIn
@@ -46,7 +46,6 @@ def _run(args, timeout=10):
         return ""
 
 
-FFMPEG = _find("ffmpeg")
 SWITCH = _find("SwitchAudioSource")
 
 def _capture(media):
@@ -78,10 +77,9 @@ def _pick(devs, name):
     return built_in[0].localizedName() if built_in else None
 
 
-def opencv_index(name):
-    """OpenCV numbers cameras by sorted uniqueID, not list order (cap_avfoundation_mac.mm)."""
-    devs = sorted(_capture(AVMediaTypeVideo) + _capture(AVMediaTypeMuxed), key=lambda d: d.uniqueID())
-    return next((i for i, d in enumerate(devs) if d.localizedName() == name), 0)
+def device(media, name):
+    """The connected capture device called `name`, or None."""
+    return next((d for d in _capture(media) if d.localizedName() == name), None)
 
 
 def speakers():

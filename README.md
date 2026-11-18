@@ -17,7 +17,7 @@ link, and pushes a Telegram alert — then optionally locks the Mac.
 | Screen-moved detection (degrees) | ✅ on **2019+ Macs** via the hidden lid-angle sensor |
 | Screen on older Macs | ✅ falls back to closed/open detection (no degrees) |
 | Siren | ✅ seamless NSSound loop at full volume on the chosen output, within ~0.25 s |
-| Photo + 10s video **with audio** | ✅ ffmpeg (avfoundation); OpenCV video-only fallback |
+| Photo + 10s video **with audio** | ✅ AVFoundation, built in: nothing to install |
 | Pick camera / mic / speaker | ✅ AVFoundation + SwitchAudioSource; built-in camera and mic by default |
 | Permissions setup (camera/mic/location) | ✅ setup guide on first launch, then Settings → Permissions |
 | Location in the alert | ✅ **CoreLocation** → Google Maps link |
@@ -42,7 +42,7 @@ config.py      settings (JSON in ~/Library/Application Support/unplugg)
 sensors.py     power / lid-angle / clamshell readers (+ fallback)
 monitor.py     polling loop → fires one "unsafe" event
 alarm.py       runs the response: siren, capture, location, telegram, lock
-capture.py     webcam photos + video (OpenCV)
+capture.py     webcam video with sound + stills (AVFoundation)
 location.py    CoreLocation → maps link
 telegram.py    Telegram Bot API
 overlay.py     fullscreen "Protected by unplugg" cover
@@ -70,7 +70,7 @@ Edit the logo, then run `python3 _design/icons.py` (needs Sketch, Xcode 26+,
 ## Run from source
 
 ```bash
-brew install ffmpeg switchaudio-osx        # audio+video capture, speaker routing (optional)
+brew install switchaudio-osx               # siren speaker routing (optional)
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 python main.py

@@ -3,10 +3,18 @@
 ponytail: usage-description plist keys are NOT optional — without them macOS
 silently denies camera/location, and kills the app the moment it asks for the
 microphone. They earn their place.
+
+An ad-hoc signature changes every build, and macOS forgets those grants with
+it. If this Mac has a code-signing certificate named "unplugg dev", the build
+is re-signed with it, so grants survive rebuilds (README › Build the .app).
 """
+import subprocess
+import sys
+
 from setuptools import setup
 
 APP = ["main.py"]
+DEV_IDENTITY = "unplugg dev"
 DATA_FILES = [
     "assets/Assets.car",  # macOS 26+ Liquid Glass icon; older macOS uses logo.icns
     ("assets", [
@@ -45,3 +53,8 @@ setup(
     data_files=DATA_FILES,
     options={"py2app": OPTIONS},  # py2app comes from requirements.txt; setup_requires is deprecated
 )
+
+identities = subprocess.run(["security", "find-identity", "-p", "codesigning"],
+                            capture_output=True, text=True).stdout
+if "py2app" in sys.argv and f'"{DEV_IDENTITY}"' in identities:
+    subprocess.run(["codesign", "--force", "--sign", DEV_IDENTITY, "dist/unplugg.app"], check=True)

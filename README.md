@@ -113,6 +113,12 @@ rm -rf build dist
 python setup.py py2app          # → dist/unplugg.app
 ```
 
+Camera, mic and location grants belong to the app's signature. An ad-hoc one
+changes every build, so macOS asks again. To keep them across rebuilds, make a
+certificate once: **Keychain Access › Certificate Assistant › Create a
+Certificate**, name `unplugg dev`, type **Code Signing**. The build signs with
+it whenever it exists.
+
 The "Modules not found" list at the end is normal: optional imports inside
 bundled libraries. A downloaded unsigned build opens via **System Settings ›
 Privacy & Security › Open Anyway** (macOS 15+ dropped right-click → Open).

@@ -1,1 +1,2 @@
-"""unplugg: a menu bar app that guards a MacBook while you step away."""
+"""unplugg: guards a laptop while you step away."""
+__version__ = "1.0.0"  # the release workflow writes this

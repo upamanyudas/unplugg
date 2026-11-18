@@ -2,7 +2,8 @@ name: Release unplugg
 
 # Admin-initiated: run from the Actions tab, pick a bump or type a version.
 # Builds the .app on Apple Silicon and Intel runners. Only once both pass does it
-# commit the version to setup.py and the cask, tag it and publish a .dmg of each.
+# commit the version to unplugg/__init__.py and the cask, tag it and publish a
+# .dmg of each.
 #
 # ponytail: per-arch builds instead of a single "universal2" binary. hidapi (the
 # lid-angle sensor's dependency) ships no universal2 wheel, so a universal2
@@ -17,7 +18,7 @@ on:
   workflow_dispatch:
     inputs:
       bump:
-        description: "Bump the version in setup.py"
+        description: "Bump the version in unplugg/__init__.py"
         type: choice
         options: [patch, minor, major]
         default: patch
@@ -41,7 +42,7 @@ jobs:
           BUMP: ${{ inputs.bump }}
           EXACT: ${{ inputs.version }}
         run: |
-          CURRENT=$(sed -n 's/.*"CFBundleShortVersionString": "\([^"]*\)".*/\1/p' setup.py)
+          CURRENT=$(sed -n 's/^__version__ = "\([^"]*\)".*/\1/p' unplugg/__init__.py)
           IFS=. read -r MAJOR MINOR PATCH <<< "$CURRENT"
           case "$BUMP" in
             major) NEXT="$((MAJOR + 1)).0.0" ;;
@@ -95,7 +96,7 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple: -k ci "$KEYCHAIN"
           security list-keychain -d user -s "$KEYCHAIN"
       - name: Stamp version
-        run: sed -i '' "s/\"$CURRENT\"/\"$VERSION\"/" setup.py
+        run: sed -i '' "s/\"$CURRENT\"/\"$VERSION\"/" unplugg/__init__.py
       - name: Build .app
         run: python setup.py py2app
       # a fixed name per arch: the in-app updater picks this Mac's dmg by it
@@ -132,7 +133,7 @@ jobs:
         run: |
           ARM=$(cut -d ' ' -f 1 dist/unplugg-arm64.dmg.sha256)
           INTEL=$(cut -d ' ' -f 1 dist/unplugg-x86_64.dmg.sha256)
-          sed -i "s/\"$CURRENT\"/\"$VERSION\"/" setup.py Casks/unplugg.rb
+          sed -i "s/\"$CURRENT\"/\"$VERSION\"/" unplugg/__init__.py Casks/unplugg.rb
           sed -i -E "s/(arm: +)\"[0-9a-f]{64}\"/\1\"$ARM\"/; s/(intel: +)\"[0-9a-f]{64}\"/\1\"$INTEL\"/" Casks/unplugg.rb
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"

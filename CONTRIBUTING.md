@@ -84,10 +84,11 @@ Edit the logo, then run `python3 _design/icons.py` (needs Sketch, Xcode 26+,
 
 **Actions › Release unplugg › Run workflow**, pick `patch`, `minor` or `major`,
 or type an exact version (the first release: `1.0.0`). It builds on Apple
-Silicon and Intel runners. Once both pass, it commits the version to `setup.py`
-and `Casks/unplugg.rb` with each dmg's sha256, tags it, and attaches
-`unplugg-arm64.dmg` and `unplugg-x86_64.dmg`, each with a `.sha256`. Pull
-after a release. The updater picks this Mac's dmg by its fixed name.
+Silicon and Intel runners. Once both pass, it commits the version to
+`unplugg/__init__.py` and `Casks/unplugg.rb` with each dmg's sha256, tags it,
+and attaches `unplugg-arm64.dmg` and `unplugg-x86_64.dmg`, each with a
+`.sha256`. Pull after a release. The updater picks this Mac's dmg by its
+fixed name.
 
 There's no Apple Developer ID ($99/yr), so releases aren't notarized. So grants
 survive updates, releases are signed with the same `unplugg cert`, set once:

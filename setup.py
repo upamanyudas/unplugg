@@ -13,6 +13,8 @@ import sys
 
 from setuptools import setup
 
+from unplugg import __version__
+
 APP = ["main.py"]
 IDENTITY = "unplugg cert"
 DATA_FILES = [
@@ -33,8 +35,8 @@ OPTIONS = {
         "CFBundleDisplayName": "unplugg",
         "CFBundleIdentifier": "com.unplugg.app",
         "CFBundleIconName": "unplugg",       # icon inside Assets.car
-        "CFBundleVersion": "1.0.0",
-        "CFBundleShortVersionString": "1.0.0",
+        "CFBundleVersion": __version__,
+        "CFBundleShortVersionString": __version__,
         "NSHumanReadableCopyright": "Copyright © 2025 Upa Das. MIT License.",  # About shows it
         "LSMinimumSystemVersion": "10.15",   # Catalina
         "LSUIElement": True,                  # menu-bar only, no Dock icon

@@ -1,7 +1,8 @@
 name: Release unplugg
 
 # Admin-initiated: run from the Actions tab, type the version. Builds the .app
-# on both Apple Silicon and Intel runners and attaches both to a GitHub Release.
+# on both Apple Silicon and Intel runners and attaches a .dmg of each to a
+# GitHub Release.
 #
 # ponytail: per-arch builds instead of a single "universal2" binary. hidapi (the
 # lid-angle sensor's dependency) ships no universal2 wheel, so a universal2
@@ -56,12 +57,20 @@ jobs:
           sed -i '' "s/1\.0\.0/${{ inputs.version }}/g" setup.py
       - name: Build .app
         run: python setup.py py2app
-      - name: Zip
+      # a fixed name, so releases/latest/download/… always points at the newest:
+      # the Homebrew cask and the in-app updater both rely on it
+      - name: Disk image
         run: |
+          mkdir dmg
+          ditto dist/unplugg.app dmg/unplugg.app
+          ln -s /Applications dmg/Applications  # drag the app onto it to install
+          DMG="unplugg-${{ matrix.arch }}.dmg"
+          for try in 1 2 3; do  # hdiutil on hosted runners sometimes says "Resource busy"
+            hdiutil create -volname unplugg -srcfolder dmg -format UDZO "dist/$DMG" && break
+            sleep 5
+          done
           cd dist
-          ZIP="unplugg-${{ inputs.version }}-${{ matrix.arch }}.zip"
-          ditto -c -k --keepParent unplugg.app "$ZIP"
-          shasum -a 256 "$ZIP" > "$ZIP.sha256"  # not notarized: lets people check the download
+          shasum -a 256 "$DMG" > "$DMG.sha256"  # the updater checks it; people can too
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: "v${{ inputs.version }}"

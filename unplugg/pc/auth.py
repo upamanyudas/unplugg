@@ -62,6 +62,7 @@ if WINDOWS:
     user32.SetForegroundWindow.argtypes = [wintypes.HWND]
     user32.SetWindowPos.argtypes = [wintypes.HWND, wintypes.HWND] + [ctypes.c_int] * 4 + [wintypes.UINT]
     CREDUIWIN_ENUMERATE_CURRENT_USER = 0x200
+    CRED_PACK_PROTECTED_CREDENTIALS = 0x1
     ERROR_CANCELLED = 1223
     ERROR_LOGON_FAILURE = 1326
     ERROR_ACCOUNT_RESTRICTION = 1327  # the right password, but it's blank
@@ -115,11 +116,15 @@ if WINDOWS:
                 return False  # cancelled
             user, domain, password = (ctypes.create_unicode_buffer(512) for _ in range(3))
             lengths = [wintypes.DWORD(512) for _ in range(3)]
-            credui.CredUnPackAuthenticationBufferW(0, blob, size, user, ctypes.byref(lengths[0]),
-                                                   domain, ctypes.byref(lengths[1]),
-                                                   password, ctypes.byref(lengths[2]))
+            # CredUI hands back the password encrypted; this decrypts it for LogonUser
+            unpacked = credui.CredUnPackAuthenticationBufferW(
+                CRED_PACK_PROTECTED_CREDENTIALS, blob, size, user, ctypes.byref(lengths[0]),
+                domain, ctypes.byref(lengths[1]), password, ctypes.byref(lengths[2]))
             ctypes.memset(blob, 0, size.value)
             ctypes.windll.ole32.CoTaskMemFree(blob)
+            if not unpacked:
+                error = ERROR_LOGON_FAILURE
+                continue
             name, where = user.value, domain.value or None
             if "\\" in name:  # DOMAIN\user or MicrosoftAccount\email
                 where, name = name.split("\\", 1)

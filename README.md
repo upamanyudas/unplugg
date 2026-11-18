@@ -4,147 +4,75 @@
 <h1 align="center">unplugg</h1>
 <p align="center">Your Mac, guarded while you step away.</p>
 
-A menu-bar app that safeguards your Mac when you step away in a café or library.
-While armed, it watches the **power adapter** and the **screen**; if either is
-disturbed it sirens, captures photo + video from the webcam, grabs a location
-link, and pushes a Telegram alert — then optionally locks the Mac.
+A menu bar app for MacBooks. Arm it before you leave your Mac in a café or
+library. If someone unplugs the charger or moves the screen, unplugg:
 
-## What's real (and what isn't)
+- sounds a siren at full volume
+- records photos and a 10-second video with sound
+- sends them to your phone on Telegram, with a map link
+- locks the Mac, if you want
 
-| Requirement | Status |
-|---|---|
-| Power-unplugged detection | ✅ `pmset` |
-| Screen-moved detection (degrees) | ✅ on **2019+ Macs** via the hidden lid-angle sensor |
-| Screen on older Macs | ✅ falls back to closed/open detection (no degrees) |
-| Siren | ✅ seamless NSSound loop at full volume on the chosen output, within ~0.25 s |
-| Photo + 10s video **with audio** | ✅ AVFoundation, built in: nothing to install |
-| Pick camera / mic / speaker | ✅ AVFoundation + CoreAudio; built-in camera and mic by default |
-| Permissions setup (camera/mic/location) | ✅ setup guide on first launch, then Settings → Permissions |
-| Location in the alert | ✅ **CoreLocation** → Google Maps link |
-| "Turn on Find My + live link" | ❌ **No Apple API exists.** Replaced by the CoreLocation link above. |
-| Telegram alert with media | ✅ Bot API |
-| Screen flash for photos | ✅ built-in screen to full brightness (lit even behind the lock screen) + white cover; restored on unlock |
-| Overlay | ✅ covers every screen; any key or mouse move asks for Touch ID / password, then whether to deactivate |
-| Launch at login | ✅ LaunchAgent (works Catalina → latest) |
-| Menu bar only, or Dock too | ✅ Settings → General → Show in Dock; every quit path asks for Touch ID while armed |
+Only you can turn it off, with Touch ID or your password.
 
-The lid-angle sensor is undocumented HID, so the app must run **un-sandboxed**
-(direct download, not the App Store).
+## Install
 
-## Project layout
-
-```
-main.py              entry point (py2app needs a script)
-setup.py             py2app build
-unplugg/
-  app.py             menu-bar app (rumps): Activate, Settings, About, Setup Guide, Help, Quit
-  preferences.py     Settings window (System Settings style), every setting lives here
-  guide.py           setup guide: how it works, permissions, Telegram, launch at login
-  config.py          settings (JSON in ~/Library/Application Support/unplugg)
-  sensors.py         power / lid-angle / clamshell readers (+ fallback)
-  monitor.py         polling loop → fires one "unsafe" event
-  alarm.py           runs the response: siren, capture, location, telegram, lock
-  capture.py         webcam video with sound + stills (AVFoundation)
-  devices.py         cameras, mics, speakers (AVFoundation, CoreAudio)
-  permissions.py     camera / mic / location status and requests
-  location.py        CoreLocation → maps link
-  telegram.py        Telegram Bot API
-  overlay.py         fullscreen "Protected by unplugg" cover
-  dialogs.py         native Telegram setup panel, About, Help
-  auth.py            Touch ID / password gate
-  loginitem.py       launch-at-login LaunchAgent
-  utils.py           asset paths, Dock icon, screen lock
-assets/              app icons, menu bar glyphs, siren
-_design/             icon sources + icons.py (rebuilds every icon)
-```
-
-## Icons
-
-| File | Used by |
-|---|---|
-| `assets/logo.icns` | macOS 10.15–15 (refit to Apple's squircle grid) |
-| `assets/Assets.car` | macOS 26+ Liquid Glass: default, dark, clear, tinted |
-| `assets/menubar*.pdf` | menu bar: outline = idle, filled = armed, red = alarm |
-| `_design/telegram-avatar.png` | your alert bot: @BotFather → `/setuserpic`, send as a photo |
-| `_design/social-preview.png` | repo **Settings → Social preview** |
-
-Edit the logo, then run `python3 _design/icons.py` (needs Sketch, Xcode 26+,
-`brew install imagemagick librsvg`). The Liquid Glass source
-`_design/unplugg.icon` opens in Icon Composer.
-
-## Run from source
+**Homebrew**
 
 ```bash
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-python main.py
+brew tap upamanyudas/unplugg https://github.com/upamanyudas/unplugg
+brew trust --cask upamanyudas/unplugg/unplugg
+brew install --cask upamanyudas/unplugg/unplugg
 ```
 
-The setup guide opens on first launch; reopen it from the menu's **Setup
-Guide…**. Every permission is optional. From source,
-**Location** belongs to your terminal app, so Settings shows "Via terminal";
-the dev .app (see Build) gets its own. The
-lid-angle slider only appears on Macs that have the sensor.
+**Download:** get the `.dmg` for your Mac from
+[Releases](https://github.com/upamanyudas/unplugg/releases/latest)
+(`arm64` = Apple Silicon, `x86_64` = Intel), then drag unplugg into Applications.
+
+unplugg isn't notarized; that needs a paid Apple account. The first time you
+open it, go to **System Settings › Privacy & Security › Open Anyway**.
+
+Screen-move detection in degrees needs a 2019 or newer MacBook. Older ones
+detect the lid closing.
+
+## Set up
+
+A setup guide opens on first launch: permissions, Telegram, launch at login.
+Reopen it from the menu bar with **Setup Guide…**. Every permission is optional.
 
 ### Telegram in 60 seconds
-1. Message **@BotFather** → `/newbot` → copy the **token**.
-2. Menu → **Settings…** → **Alerts** → Telegram → **+**, paste the token.
-3. Click **Auto-detect**, then send your bot any message within 30 s.
-4. **Send Test Message**, then **Save** (it checks the details with Telegram).
 
-Use a bot only unplugg talks to: if another app polls the same bot, it eats
-the messages and Auto-detect can't see them.
+1. Message **@BotFather** → `/newbot` → copy the **token**.
+2. In the setup guide (or **Settings… › Alerts**), click **+** and paste the token.
+3. Click **Auto-detect**, then send your bot any message within 30 s.
+4. **Send Test Message**, then **Save**.
+
+Give unplugg its own bot. If another app reads the same bot, it takes the
+messages and Auto-detect can't see them.
 
 ### Make alerts loud on your phone
-Bots can't mark a message high priority; the Bot API only has a *silent* flag.
-So it's a one-time phone setting (also under **?** in the setup panel):
+
+Bots can't send high-priority messages, so this is a one-time phone setting:
 
 - **iPhone:** Settings › Focus › each Focus › Apps › add Telegram. In Telegram,
-  Settings › Notifications and Sounds: give the bot's chat a loud sound. Silent
-  mode only lets vibration through: Sounds & Haptics › Haptics › Always Play.
+  Settings › Notifications and Sounds: give the bot's chat a loud sound. For
+  silent mode: Sounds & Haptics › Haptics › Always Play.
 - **Android:** long-press the first alert › **Priority**, then allow priority
   conversations in Do Not Disturb.
 
-## Build the .app
+## Updates
 
-```bash
-pip install -r requirements.txt
+unplugg checks GitHub once a day and shows what's new: install, skip, or later.
+**Settings › General** can install updates on their own, never while armed.
 
-# dev: a real .app that runs your live source files, so Touch ID and
-# permission prompts show unplugg's icon and name instead of Python's
-python setup.py py2app -A && open dist/unplugg.app
+## Privacy
 
-# release: standalone app
-rm -rf build dist
-python setup.py py2app          # → dist/unplugg.app
-```
+No accounts, no analytics, no servers of its own. Photos and video stay in
+`~/Pictures/unplugg` and go only to your Telegram bot. Update checks ask GitHub.
 
-Camera, mic and location grants belong to the app's signature. An ad-hoc one
-changes every build, so macOS asks again. To keep them across rebuilds, make a
-certificate once: **Keychain Access › Certificate Assistant › Create a
-Certificate**, name `unplugg cert`, type **Code Signing**. The build signs with
-it whenever it exists.
+## Contributing
 
-The "Modules not found" list at the end is normal: optional imports inside
-bundled libraries. A downloaded unsigned build opens via **System Settings ›
-Privacy & Security › Open Anyway** (macOS 15+ dropped right-click → Open).
+See [CONTRIBUTING.md](CONTRIBUTING.md).
 
-## Releasing (admin-initiated)
+## License
 
-GitHub → **Actions → Release unplugg → Run workflow**, type the version. It
-builds on Apple Silicon **and** Intel runners and attaches both zips, each
-with a `.sha256`, to a `v<version>` GitHub Release.
-
-There's no Apple Developer ID (it costs $99/yr), so releases aren't notarized.
-People open a download once via **Open Anyway** (above).
-
-So grants survive updates, sign every release with the same certificate. Once:
-1. Keychain Access › My Certificates › `unplugg cert` › **Export**, as a .p12 with a password.
-2. `base64 -i unplugg-cert.p12 | pbcopy`
-3. Repo **Settings › Secrets and variables › Actions**: add `UNPLUGG_CERT_P12`
-   (paste) and `UNPLUGG_CERT_PASSWORD`.
-
-Without them, releases are ad-hoc signed and macOS asks again after each update.
-
-> Per-arch builds, not one universal2 binary: hidapi (behind the lid-angle
-> sensor) ships no universal2 wheel. Two native builds work.
+[MIT](LICENSE) © 2025 Upa Das

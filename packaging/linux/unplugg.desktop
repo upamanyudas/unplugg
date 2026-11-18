@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=unplugg
+Comment=Guards your laptop while you step away
+Exec=unplugg
+Icon=unplugg
+Categories=Utility;
+Terminal=false

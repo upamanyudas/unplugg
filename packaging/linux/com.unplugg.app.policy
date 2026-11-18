@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<!-- Lets unplugg ask for your own password (or fingerprint) in the desktop's
+     own dialog before it disarms. The .deb and .rpm install it. -->
+<policyconfig>
+  <vendor>unplugg</vendor>
+  <vendor_url>https://github.com/upamanyudas/unplugg</vendor_url>
+  <action id="com.unplugg.app.disarm">
+    <description>Turn off the unplugg alarm</description>
+    <message>unplugg needs to confirm it's you.</message>
+    <icon_name>unplugg</icon_name>
+    <defaults>
+      <allow_any>auth_self</allow_any>
+      <allow_inactive>auth_self</allow_inactive>
+      <allow_active>auth_self</allow_active>
+    </defaults>
+  </action>
+</policyconfig>

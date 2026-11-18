@@ -1,0 +1,30 @@
+# .deb and .rpm:  VERSION=1.0.0 nfpm package -f packaging/linux/nfpm.yaml -p deb -t dist/
+# Wraps dist/unplugg (packaging/build.py). Paths are from the repo root.
+name: unplugg
+arch: amd64
+platform: linux
+version: ${VERSION}
+maintainer: Upa Das <upamanyudas@hotmail.com>
+description: Guards a laptop while you step away. A siren, photos, video and location go to Telegram.
+homepage: https://github.com/upamanyudas/unplugg
+license: MIT
+contents:
+  - src: dist/unplugg
+    dst: /opt/unplugg
+    type: tree
+  - src: /opt/unplugg/unplugg
+    dst: /usr/bin/unplugg
+    type: symlink
+  - src: packaging/linux/unplugg.desktop
+    dst: /usr/share/applications/unplugg.desktop
+  - src: assets/logo.png
+    dst: /usr/share/pixmaps/unplugg.png
+  - src: packaging/linux/com.unplugg.app.policy
+    dst: /usr/share/polkit-1/actions/com.unplugg.app.policy
+overrides:
+  deb:
+    depends: [libxcb-cursor0]          # Qt's X11 plugin needs it
+    recommends: [pulseaudio-utils]     # pactl: siren at full volume
+  rpm:
+    depends: [xcb-util-cursor]
+    recommends: [pulseaudio-utils]

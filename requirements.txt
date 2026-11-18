@@ -1,11 +1,24 @@
-rumps>=0.4.0
 requests>=2.31
-pybooklid>=0.1               # lid-angle sensor (2019+ Macs); falls back gracefully
-pyobjc-framework-Cocoa>=10
-pyobjc-framework-CoreLocation>=10
-pyobjc-framework-AVFoundation>=10   # camera + mic: permissions, devices, recording
-pyobjc-framework-CoreMedia>=10      # recording length, still times
-pyobjc-framework-CoreAudio>=10      # speaker list, siren output
-pyobjc-framework-Quartz>=10         # overlay status pulse, JPEG stills
-pyobjc-framework-LocalAuthentication>=10  # Touch ID / password gate to disarm
-py2app>=0.28                 # build only
+
+# macOS
+rumps>=0.4.0; sys_platform == "darwin"
+pybooklid>=0.1; sys_platform == "darwin"                 # lid-angle sensor (2019+ Macs); falls back gracefully
+pyobjc-framework-Cocoa>=10; sys_platform == "darwin"
+pyobjc-framework-CoreLocation>=10; sys_platform == "darwin"
+pyobjc-framework-AVFoundation>=10; sys_platform == "darwin"  # camera + mic: permissions, devices, recording
+pyobjc-framework-CoreMedia>=10; sys_platform == "darwin"     # recording length, still times
+pyobjc-framework-CoreAudio>=10; sys_platform == "darwin"     # speaker list, siren output
+pyobjc-framework-Quartz>=10; sys_platform == "darwin"        # overlay status pulse, JPEG stills
+pyobjc-framework-LocalAuthentication>=10; sys_platform == "darwin"  # Touch ID / password gate to disarm
+py2app>=0.28; sys_platform == "darwin"                   # build only
+
+# Windows + Linux
+PySide6-Essentials>=6.8; sys_platform != "darwin"        # tray, windows, D-Bus
+PySide6-Addons>=6.8; sys_platform != "darwin"            # camera + mic recording, location, sensors
+psutil>=5.9; sys_platform != "darwin"                    # battery, AC power
+pycaw>=20240316; sys_platform == "win32"                 # siren at full volume
+winrt-Windows.Foundation>=3; sys_platform == "win32"
+winrt-Windows.Security.Credentials.UI>=3; sys_platform == "win32"  # Windows Hello gate to disarm
+winrt-Windows.Devices.Sensors>=3; sys_platform == "win32"          # motion on 2-in-1s
+python-pam>=2; sys_platform == "linux"                   # password box when polkit has no unplugg policy
+pyinstaller>=6.10; sys_platform != "darwin"              # build only

@@ -4,6 +4,7 @@ import sys
 import objc
 import rumps
 from AppKit import NSProcessInfo, NSTerminateCancel, NSTerminateNow
+from Foundation import NSActivityIdleSystemSleepDisabled
 from PyObjCTools import AppHelper
 
 from . import alarm, auth, dialogs, overlay, sensors, updater
@@ -69,6 +70,9 @@ class UnpluggApp(rumps.App):
                           f'"Power unplugged" in {SETTINGS[:-1]}.')
             return
         self.config["activated"] = True
+        # an idle Mac sleeps even on power, and asleep it can't sound the alarm
+        self.awake = NSProcessInfo.processInfo().beginActivityWithOptions_reason_(
+            NSActivityIdleSystemSleepDisabled, "The alarm is armed")
         self.monitor.start()
         self.toggle.title = "Deactivate"
         self._set_state("armed")
@@ -79,6 +83,7 @@ class UnpluggApp(rumps.App):
     def _deactivate(self):
         self.config["activated"] = False
         self.monitor.stop()
+        NSProcessInfo.processInfo().endActivity_(self.awake)
         alarm.stop_siren()
         overlay.hide()
         self.toggle.title = "Activate"

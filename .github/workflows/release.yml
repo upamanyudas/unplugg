@@ -140,15 +140,17 @@ jobs:
           merge-multiple: true
       - name: Commit the version, the cask and the Scoop manifest
         run: |
-          ARM=$(cut -d ' ' -f 1 dist/unplugg-arm64.dmg.sha256)
-          INTEL=$(cut -d ' ' -f 1 dist/unplugg-x86_64.dmg.sha256)
-          LINUX=$(cut -d ' ' -f 1 dist/unplugg-linux-x86_64.AppImage.sha256)
-          WINDOWS=$(cut -d ' ' -f 1 dist/unplugg-windows-x64.zip.sha256)
+          hash() { cut -d ' ' -f 1 "dist/unplugg-$1.sha256"; }
           sed -i "s/\"$CURRENT\"/\"$VERSION\"/" unplugg/__init__.py Casks/unplugg.rb
-          sed -i -E "s/(arm: +)\"[0-9a-f]{64}\"/\1\"$ARM\"/; s/(intel: +)\"[0-9a-f]{64}\"/\1\"$INTEL\"/; s/(x86_64_linux: +)\"[0-9a-f]{64}\"/\1\"$LINUX\"/" Casks/unplugg.rb
-          jq --arg v "$VERSION" --arg hash "$WINDOWS" '.version = $v
-            | .architecture."64bit".url |= sub("/v[0-9.]+/"; "/v\($v)/")
-            | .architecture."64bit".hash = $hash' bucket/unplugg.json > manifest.json
+          sed -i -E "s/(arm: +)\"[0-9a-f]{64}\"/\1\"$(hash arm64.dmg)\"/
+                     s/(intel: +)\"[0-9a-f]{64}\"/\1\"$(hash x86_64.dmg)\"/
+                     s/(arm64_linux: +)\"[0-9a-f]{64}\"/\1\"$(hash linux-arm64.AppImage)\"/
+                     s/(x86_64_linux: +)\"[0-9a-f]{64}\"/\1\"$(hash linux-x86_64.AppImage)\"/" Casks/unplugg.rb
+          jq --arg v "$VERSION" --arg x64 "$(hash windows-x64.zip)" --arg arm64 "$(hash windows-arm64.zip)" '
+            .version = $v
+            | .architecture |= map_values(.url |= sub("/v[0-9.]+/"; "/v\($v)/"))
+            | .architecture."64bit".hash = $x64
+            | .architecture.arm64.hash = $arm64' bucket/unplugg.json > manifest.json
           mv manifest.json bucket/unplugg.json
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"

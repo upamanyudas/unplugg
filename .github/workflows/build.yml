@@ -1,8 +1,8 @@
 name: Build Windows and Linux
 
-# On every push and pull request: build the Windows and Linux packages, so a
-# packaging break shows up before a release. Each run keeps them as artifacts.
-# Release unplugg calls this too, with the version to stamp.
+# On every push and pull request: build the Windows and Linux packages, x64 and
+# ARM64, so a packaging break shows up before a release. Each run keeps them as
+# artifacts. Release unplugg calls this too, with the version to stamp.
 #
 # Fixed names, like the dmgs: the updater, the cask and Scoop find them by name.
 # Not signed: SmartScreen asks once (More info › Run anyway), like Open Anyway.
@@ -19,7 +19,14 @@ on:
 
 jobs:
   windows:
-    runs-on: windows-latest
+    strategy:
+      matrix:
+        include:
+          - runner: windows-latest
+            arch: x64
+          - runner: windows-11-arm  # Snapdragon and other ARM laptops
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
     defaults:
       run:
         shell: bash
@@ -38,22 +45,41 @@ jobs:
       - name: Build
         run: python packaging/build.py
       - name: Installer and zip
+        env:
+          ARCH: ${{ matrix.arch }}
         run: |
           VERSION=$(sed -n 's/^__version__ = "\([^"]*\)".*/\1/p' unplugg/__init__.py)
-          choco install innosetup --no-progress -y
+          curl -sSLo is.exe https://github.com/jrsoftware/issrc/releases/download/is-6_7_4/innosetup-6.7.4.exe
+          ./is.exe //VERYSILENT //SUPPRESSMSGBOXES //NORESTART //ALLUSERS
           # -D, not /D: bash on Windows rewrites /D… as a path
-          "/c/Program Files (x86)/Inno Setup 6/ISCC.exe" "-DAppVersion=$VERSION" packaging/windows/unplugg.iss
+          "/c/Program Files (x86)/Inno Setup 6/ISCC.exe" "-DAppVersion=$VERSION" "-DArch=$ARCH" packaging/windows/unplugg.iss
+          # one unplugg folder inside, Scoop's extract_dir
+          pwsh -Command "Compress-Archive -Path dist/unplugg -DestinationPath dist/unplugg-windows-$ARCH.zip"
           cd dist
-          7z a unplugg-windows-x64.zip unplugg  # one unplugg folder inside, Scoop's extract_dir
-          for f in unplugg-windows-x64-setup.exe unplugg-windows-x64.zip; do sha256sum "$f" > "$f.sha256"; done
+          for f in unplugg-windows-$ARCH-setup.exe unplugg-windows-$ARCH.zip; do sha256sum "$f" > "$f.sha256"; done
       - uses: actions/upload-artifact@v7
         with:
-          name: unplugg-windows
-          path: dist/unplugg-windows-x64*
+          name: unplugg-windows-${{ matrix.arch }}
+          path: dist/unplugg-windows-${{ matrix.arch }}*
 
-  # 22.04's glibc, so the build runs on Ubuntu 22.04+, Debian 12+ and Fedora 36+
+  # each runner's glibc is the floor: x86_64 needs 2.35+ (Ubuntu 22.04, Debian 12,
+  # Fedora 36), ARM64 needs 2.39+ (Ubuntu 24.04), as Qt's ARM wheel does
   linux:
-    runs-on: ubuntu-22.04
+    strategy:
+      matrix:
+        include:
+          - runner: ubuntu-22.04
+            arch: x86_64   # the cask's names, like the dmgs
+            tool: x86_64   # appimagetool's
+            goarch: amd64  # nfpm's and the .deb's
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+            tool: aarch64
+            goarch: arm64
+    runs-on: ${{ matrix.runner }}
+    env:
+      ARCH: ${{ matrix.arch }}
+      GOARCH: ${{ matrix.goarch }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -75,18 +101,20 @@ jobs:
           cp packaging/linux/unplugg.desktop AppDir/
           cp assets/logo.png AppDir/unplugg.png
           install -m 755 packaging/linux/AppRun AppDir/AppRun
-          curl -sSLo appimagetool https://github.com/AppImage/appimagetool/releases/download/1.9.1/appimagetool-x86_64.AppImage
+          curl -sSLo appimagetool https://github.com/AppImage/appimagetool/releases/download/1.9.1/appimagetool-${{ matrix.tool }}.AppImage
           chmod +x appimagetool
-          ARCH=x86_64 ./appimagetool --appimage-extract-and-run AppDir dist/unplugg-linux-x86_64.AppImage
+          ARCH=${{ matrix.tool }} ./appimagetool --appimage-extract-and-run AppDir \
+            dist/unplugg-linux-${{ matrix.arch }}.AppImage
       - name: .deb and .rpm
         run: |
           export VERSION=$(sed -n 's/^__version__ = "\([^"]*\)".*/\1/p' unplugg/__init__.py)
-          curl -sSL https://github.com/goreleaser/nfpm/releases/download/v2.48.0/nfpm_2.48.0_Linux_x86_64.tar.gz | tar xz nfpm
-          ./nfpm package -f packaging/linux/nfpm.yaml -p deb -t dist/unplugg-linux-amd64.deb
-          ./nfpm package -f packaging/linux/nfpm.yaml -p rpm -t dist/unplugg-linux-x86_64.rpm
+          NFPM=$([ "$GOARCH" = amd64 ] && echo x86_64 || echo arm64)
+          curl -sSL https://github.com/goreleaser/nfpm/releases/download/v2.48.0/nfpm_2.48.0_Linux_$NFPM.tar.gz | tar xz nfpm
+          ./nfpm package -f packaging/linux/nfpm.yaml -p deb -t dist/unplugg-linux-$GOARCH.deb
+          ./nfpm package -f packaging/linux/nfpm.yaml -p rpm -t dist/unplugg-linux-$ARCH.rpm
           cd dist
           for f in unplugg-linux-*; do sha256sum "$f" > "$f.sha256"; done
       - uses: actions/upload-artifact@v7
         with:
-          name: unplugg-linux
+          name: unplugg-linux-${{ matrix.arch }}
           path: dist/unplugg-linux-*

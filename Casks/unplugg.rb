@@ -5,13 +5,14 @@ cask "unplugg" do
   version "1.0.0"
   sha256 arm:          "cd2e53eac8c694ef8e27100308f57ba505dbf48f4cfc35ece299a7d917f4b8e5",
          intel:        "a8550420d5dd9ba4fd157d2516b9b2082915d0a37d19f90b6e1000224747adc5",
+         arm64_linux:  "0000000000000000000000000000000000000000000000000000000000000000",
          x86_64_linux: "0000000000000000000000000000000000000000000000000000000000000000"
 
   on_macos do
     url "https://github.com/upamanyudas/unplugg/releases/download/v#{version}/unplugg-#{arch}.dmg"
   end
   on_linux do
-    url "https://github.com/upamanyudas/unplugg/releases/download/v#{version}/unplugg-linux-x86_64.AppImage"
+    url "https://github.com/upamanyudas/unplugg/releases/download/v#{version}/unplugg-linux-#{arch}.AppImage"
   end
 
   name "unplugg"
@@ -35,9 +36,7 @@ cask "unplugg" do
   end
 
   on_linux do
-    depends_on arch: :x86_64
-
-    app_image "unplugg-linux-x86_64.AppImage"
+    app_image "unplugg-linux-#{arch}.AppImage"
 
     zap trash: [
       "~/.config/autostart/unplugg.desktop",

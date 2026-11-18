@@ -51,14 +51,15 @@ scoop install unplugg/unplugg
 
 **Download:** `unplugg-windows-x64-setup.exe` from
 [Releases](https://github.com/upamanyudas/unplugg/releases/latest). No admin
-needed. Or `unplugg-windows-x64.zip` to run without installing.
+needed. Or `unplugg-windows-x64.zip` to run without installing. ARM laptops
+(Snapdragon): the `arm64` files.
 
 unplugg isn't signed yet. The first time, SmartScreen says "Windows protected
 your PC": click **More info › Run anyway**.
 
 New tray icons hide under the **^** arrow. Drag unplugg onto the taskbar.
 
-### Linux (x86_64)
+### Linux
 
 **Homebrew**
 
@@ -74,7 +75,8 @@ brew install --cask upamanyudas/unplugg/unplugg
 - `unplugg-linux-amd64.deb`: Ubuntu, Debian. `sudo apt install ./unplugg-linux-amd64.deb`
 - `unplugg-linux-x86_64.rpm`: Fedora, openSUSE. `sudo dnf install ./unplugg-linux-x86_64.rpm`
 
-Needs glibc 2.35+ (Ubuntu 22.04, Debian 12, Fedora 36 or newer).
+ARM laptops: the `arm64` files. x86_64 needs Ubuntu 22.04, Debian 12, Fedora
+36 or newer. ARM64 needs Ubuntu 24.04 or newer.
 
 - **GNOME:** tray icons need the AppIndicator extension. Ubuntu has it already.
 - **Disarming:** the .deb and .rpm use your desktop's own password dialog. The

@@ -8,6 +8,7 @@ to you, so the dialog says how to update instead.
 """
 import hashlib
 import os
+import platform
 import re
 import subprocess
 import sys
@@ -27,8 +28,10 @@ REPO = "upamanyudas/unplugg"
 LATEST = f"https://api.github.com/repos/{REPO}/releases/latest"
 PAGE = f"https://github.com/{REPO}/releases/latest"
 DAY = 24 * 60 * 60
-INSTALLER = "unplugg-windows-x64-setup.exe"   # fixed names: the release workflow uploads these
-APPIMAGE = "unplugg-linux-x86_64.AppImage"
+# fixed names, one per architecture: the release workflow uploads these
+ARM = platform.machine().lower() in ("arm64", "aarch64")
+INSTALLER = f"unplugg-windows-{'arm64' if ARM else 'x64'}-setup.exe"
+APPIMAGE = f"unplugg-linux-{'arm64' if ARM else 'x86_64'}.AppImage"
 
 
 def schedule(app):

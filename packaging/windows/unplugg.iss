@@ -1,5 +1,6 @@
-; Windows installer:  iscc -DAppVersion=1.0.0 packaging\windows\unplugg.iss
-; Wraps dist\unplugg (packaging\build.py) into dist\unplugg-windows-x64-setup.exe.
+; Windows installer:  iscc -DAppVersion=1.0.0 -DArch=x64 packaging\windows\unplugg.iss
+; Wraps dist\unplugg (packaging\build.py) into dist\unplugg-windows-<arch>-setup.exe.
+; Arch is x64 or arm64, whichever the build ran on.
 ; Per-user, so no admin prompt, and the in-app updater can rerun it silently:
 ; /VERYSILENT closes the running copy, replaces it, and starts the new one.
 
@@ -13,14 +14,19 @@ AppCopyright=Copyright (C) 2025 Upa Das. MIT License.
 PrivilegesRequired=lowest
 DefaultDirName={autopf}\unplugg
 DisableProgramGroupPage=yes
+#if Arch == "arm64"
+ArchitecturesAllowed=arm64
+ArchitecturesInstallIn64BitMode=arm64
+#else
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
+#endif
 MinVersion=10.0
 SetupIconFile=..\..\assets\logo.ico
 UninstallDisplayIcon={app}\unplugg.exe
 WizardStyle=modern
 OutputDir=..\..\dist
-OutputBaseFilename=unplugg-windows-x64-setup
+OutputBaseFilename=unplugg-windows-{#Arch}-setup
 Compression=lzma2/max
 SolidCompression=yes
 

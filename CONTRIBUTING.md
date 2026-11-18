@@ -106,13 +106,15 @@ Edit the logo, then run `python3 _design/icons.py` (needs Sketch, Xcode 26+,
 
 **Actions › Release unplugg › Run workflow**, pick `patch`, `minor` or `major`,
 or type an exact version (the first release: `1.0.0`). It builds on Apple
-Silicon, Intel, Windows and Linux runners. Once all pass, it commits the
+Silicon and Intel Macs, and x64 and ARM64 Windows and Linux runners
+(`build.yml`, which also runs on every push). Once all pass, it commits the
 version to `unplugg/__init__.py`, `Casks/unplugg.rb` and `bucket/unplugg.json`
 with their sha256s, tags it, and attaches, each with a `.sha256`:
 
 - `unplugg-arm64.dmg`, `unplugg-x86_64.dmg`
-- `unplugg-windows-x64-setup.exe`, `unplugg-windows-x64.zip`
-- `unplugg-linux-x86_64.AppImage`, `unplugg-linux-amd64.deb`, `unplugg-linux-x86_64.rpm`
+- `unplugg-windows-{x64,arm64}-setup.exe`, `unplugg-windows-{x64,arm64}.zip`
+- `unplugg-linux-{x86_64,arm64}.AppImage`, `unplugg-linux-{amd64,arm64}.deb`,
+  `unplugg-linux-{x86_64,arm64}.rpm`
 
 Pull after a release. The updaters find their download by its fixed name.
 

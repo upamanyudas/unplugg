@@ -12,6 +12,7 @@ import dialogs
 import overlay
 import sensors
 from config import load_config, save_config
+from guide import open_guide
 from monitor import Monitor
 from preferences import open_preferences
 from utils import asset_path, show_in_dock
@@ -40,6 +41,8 @@ class UnpluggApp(rumps.App):
         UnpluggApp.instance = self
         self.monitor = Monitor(self._on_unsafe, self.config)
         AppHelper.callLater(1, alarm.prepare)  # after launch, so the icon shows first
+        if not self.config["setup_done"]:
+            AppHelper.callLater(1, open_guide, self)
         self.toggle = rumps.MenuItem("Activate", callback=self._toggle_activate)
         self.menu = [
             self.toggle,
@@ -47,6 +50,7 @@ class UnpluggApp(rumps.App):
             rumps.MenuItem(SETTINGS, callback=lambda _: open_preferences(self), key=","),
             None,
             rumps.MenuItem("About…", callback=lambda _: dialogs.show_about()),
+            rumps.MenuItem("Setup Guide…", callback=lambda _: open_guide(self)),
             rumps.MenuItem("Help…", callback=lambda _: dialogs.show_help()),
             rumps.MenuItem("Quit", callback=self._quit, key="q"),
         ]

@@ -30,6 +30,7 @@ DEFAULTS = {
     "launch_at_login": False,
     "show_in_dock": False,       # off: menu bar only, Dock icon just while Settings is open
     "settings_pane": 0,          # reopen Settings on the last pane used
+    "setup_done": False,         # the setup guide opens at launch until it's been closed once
 }
 
 

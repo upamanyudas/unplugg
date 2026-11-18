@@ -19,7 +19,7 @@ link, and pushes a Telegram alert — then optionally locks the Mac.
 | Siren | ✅ seamless NSSound loop at full volume on the chosen output, within ~0.25 s |
 | Photo + 10s video **with audio** | ✅ ffmpeg (avfoundation); OpenCV video-only fallback |
 | Pick camera / mic / speaker | ✅ AVFoundation + SwitchAudioSource; built-in camera and mic by default |
-| Permissions setup (camera/mic/location) | ✅ Settings → Permissions |
+| Permissions setup (camera/mic/location) | ✅ setup guide on first launch, then Settings → Permissions |
 | Location in the alert | ✅ **CoreLocation** → Google Maps link |
 | "Turn on Find My + live link" | ❌ **No Apple API exists.** Replaced by the CoreLocation link above. |
 | Telegram alert with media | ✅ Bot API |
@@ -35,8 +35,9 @@ The lid-angle sensor is undocumented HID, so the app must run **un-sandboxed**
 
 ```
 main.py        entry point
-unplugg.py     menu-bar app (rumps) — essentials only: Activate, Settings, About, Help, Quit
+unplugg.py     menu-bar app (rumps) — essentials only: Activate, Settings, About, Setup Guide, Help, Quit
 preferences.py Settings window (System Settings style) — every setting lives here
+guide.py       setup guide: how it works, permissions, Telegram, launch at login
 config.py      settings (JSON in ~/Library/Application Support/unplugg)
 sensors.py     power / lid-angle / clamshell readers (+ fallback)
 monitor.py     polling loop → fires one "unsafe" event
@@ -75,7 +76,8 @@ pip install -r requirements.txt
 python main.py
 ```
 
-First arm grants **Camera** permission when prompted. From source,
+The setup guide opens on first launch; reopen it from the menu's **Setup
+Guide…**. Every permission is optional. From source,
 **Location** belongs to your terminal app, so Settings shows "Via terminal";
 the dev .app (see Build) gets its own. The
 lid-angle slider only appears on Macs that have the sensor.

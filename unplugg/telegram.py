@@ -9,6 +9,8 @@ EVENT_LABEL = {
     "power_unplugged": "Power adapter unplugged",
     "screen_moved": "Screen moved",
     "screen_closed": "Screen closed",
+    "device_moved": "Device moved",
+    "shutdown": "Shutdown or sleep attempted",
 }
 
 

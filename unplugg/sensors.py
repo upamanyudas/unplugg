@@ -47,6 +47,11 @@ def lid_angle():
     return read_lid_angle() if _HAS_ANGLE else None
 
 
+def acceleration():
+    """None: the M2+ accelerometer is undocumented HID that only root may read."""
+    return None
+
+
 def is_lid_closed() -> bool:
     """Clamshell closed. Universal fallback when there's no angle sensor."""
     out = subprocess.run(

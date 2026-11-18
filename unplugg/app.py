@@ -35,7 +35,7 @@ class UnpluggApp(rumps.App):
         if not self.laptop and dialogs.alert(*NOT_LAPTOP, "Quit", "Open Anyway") == 0:
             sys.exit()
         UnpluggApp.instance = self
-        self.monitor = Monitor(self._on_unsafe, self.config)
+        self.monitor = Monitor(self._on_unsafe, self.config, sensors)
         AppHelper.callLater(1, alarm.prepare)  # after launch, so the icon shows first
         if not self.config["setup_done"]:
             AppHelper.callLater(1, open_guide, self)

@@ -1,19 +1,26 @@
-"""Settings persistence. Plain JSON in Application Support, file mode 0600.
+"""Settings persistence. Plain JSON in the OS's per-user settings folder, mode 0600.
 
 ponytail: tokens stored in plaintext (chmod 600), not encrypted. base64 is not
 encryption and pretends to be. Add keyring only if a threat model demands it.
 """
 import json
 import os
+import sys
 from pathlib import Path
 
-CONFIG_DIR = Path.home() / "Library" / "Application Support" / "unplugg"
+if sys.platform == "darwin":
+    CONFIG_DIR = Path.home() / "Library" / "Application Support" / "unplugg"
+elif sys.platform == "win32":
+    CONFIG_DIR = Path(os.environ["APPDATA"]) / "unplugg"
+else:
+    CONFIG_DIR = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "unplugg"
 CONFIG_FILE = CONFIG_DIR / "config.json"
 
 DEFAULTS = {
     "activated": False,
     "monitor_power": True,       # alarm on power unplugged
     "monitor_lid": True,         # alarm on screen closed / moved
+    "monitor_motion": True,      # alarm on the device moving (windows/linux 2-in-1s)
     "angle_threshold": 5,        # degrees of lid movement that counts as unsafe
     "play_sound": True,
     "send_location": True,       # attach a maps link (CoreLocation)
@@ -34,6 +41,7 @@ DEFAULTS = {
     "check_updates": True,       # daily, against the latest GitHub release
     "auto_update": False,        # install without asking (never while armed)
     "skipped_version": "",       # "Skip This Version" stops reminders for this one
+    "power_restore": {},         # windows: button actions to put back on disarm, or after a crash
 }
 
 

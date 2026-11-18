@@ -41,7 +41,8 @@ jobs:
         run: |
           VERSION=$(sed -n 's/^__version__ = "\([^"]*\)".*/\1/p' unplugg/__init__.py)
           choco install innosetup --no-progress -y
-          "/c/Program Files (x86)/Inno Setup 6/ISCC.exe" "/DAppVersion=$VERSION" packaging/windows/unplugg.iss
+          # -D, not /D: bash on Windows rewrites /D… as a path
+          "/c/Program Files (x86)/Inno Setup 6/ISCC.exe" "-DAppVersion=$VERSION" packaging/windows/unplugg.iss
           cd dist
           7z a unplugg-windows-x64.zip unplugg  # one unplugg folder inside, Scoop's extract_dir
           for f in unplugg-windows-x64-setup.exe unplugg-windows-x64.zip; do sha256sum "$f" > "$f.sha256"; done

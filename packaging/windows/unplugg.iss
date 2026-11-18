@@ -1,4 +1,4 @@
-; Windows installer:  iscc /DAppVersion=1.0.0 packaging\windows\unplugg.iss
+; Windows installer:  iscc -DAppVersion=1.0.0 packaging\windows\unplugg.iss
 ; Wraps dist\unplugg (packaging\build.py) into dist\unplugg-windows-x64-setup.exe.
 ; Per-user, so no admin prompt, and the in-app updater can rerun it silently:
 ; /VERYSILENT closes the running copy, replaces it, and starts the new one.

@@ -2,11 +2,11 @@ cask "unplugg" do
   arch arm: "arm64", intel: "x86_64"
 
   # the release workflow writes version and sha256
-  version "1.0.0"
-  sha256 arm:          "cd2e53eac8c694ef8e27100308f57ba505dbf48f4cfc35ece299a7d917f4b8e5",
-         intel:        "a8550420d5dd9ba4fd157d2516b9b2082915d0a37d19f90b6e1000224747adc5",
-         arm64_linux:  "0000000000000000000000000000000000000000000000000000000000000000",
-         x86_64_linux: "0000000000000000000000000000000000000000000000000000000000000000"
+  version "1.1.0"
+  sha256 arm:          "b79d29c2832f08f722a3b2d9047ae79da3afd3a6efc1c748d868efd6dcde8aca",
+         intel:        "ee51ab62c0958282d22b5c135a14b3e95bbbefaffbcaf73e08e70cef2a3f940a",
+         arm64_linux:  "dcefcb0ba3ada1fd0a9dc8e27c867f62fa3d0704b2b6e00a93307305f4dd0f45",
+         x86_64_linux: "2be40fa48c542929b47466e040fe16342dff13f50538ec399a559b2cbadb5f17"
 
   on_macos do
     url "https://github.com/upamanyudas/unplugg/releases/download/v#{version}/unplugg-#{arch}.dmg"

@@ -13,12 +13,13 @@ Must be called on the main thread.
 import ctypes
 
 from AppKit import (
-    NSAppearance, NSAppearanceNameDarkAqua, NSApplication, NSBackingStoreBuffered, NSColor,
+    NSAppearance, NSAppearanceNameDarkAqua, NSApplication,
+    NSApplicationDidChangeScreenParametersNotification, NSBackingStoreBuffered, NSColor,
     NSEvent, NSEventMaskFlagsChanged, NSEventMaskKeyDown, NSEventMaskLeftMouseDown,
     NSEventMaskMouseMoved, NSEventMaskOtherMouseDown, NSEventMaskRightMouseDown,
     NSEventMaskScrollWheel, NSFont, NSFontWeightSemibold, NSImageScaleProportionallyUpOrDown,
-    NSImageView, NSScreen, NSScreenSaverWindowLevel, NSTextAlignmentCenter, NSTextField, NSView,
-    NSVisualEffectBlendingModeBehindWindow,
+    NSImageView, NSNotificationCenter, NSOperationQueue, NSScreen, NSScreenSaverWindowLevel,
+    NSTextAlignmentCenter, NSTextField, NSView, NSVisualEffectBlendingModeBehindWindow,
     NSVisualEffectMaterialFullScreenUI, NSVisualEffectStateActive, NSVisualEffectView, NSWindow,
     NSWindowCollectionBehaviorCanJoinAllSpaces, NSWindowCollectionBehaviorFullScreenAuxiliary,
     NSWindowCollectionBehaviorStationary, NSWindowStyleMaskBorderless, NSWorkspace,
@@ -36,6 +37,9 @@ _monitors = []
 _on_input = None
 _whites = []      # hidden white sheet per display, shown by the flash
 _brightness = {}  # display id -> level before the flash
+_alarm = False    # what show() last asked for, redone when displays change
+_flashing = False
+_observer = None  # display changes, while covered
 
 _DS = ctypes.CDLL("/System/Library/PrivateFrameworks/DisplayServices.framework/DisplayServices")
 _DS.DisplayServicesGetBrightness.argtypes = [ctypes.c_uint32, ctypes.POINTER(ctypes.c_float)]
@@ -48,19 +52,39 @@ class _Cover(NSWindow):
 
 
 def show(on_input, alarm=False, flash=False):
-    """Cover every display; on later calls just flip the badge to the alarm state
-    (and flash). The first input after that calls on_input() once."""
-    global _windows, _on_input
-    if not _windows:
+    """Cover every display, and any plugged in while covered; on later calls just
+    flip the badge to the alarm state (and flash). The first input after that
+    calls on_input() once."""
+    global _on_input, _observer, _alarm, _flashing
+    _alarm, _flashing = alarm, _flashing or flash
+    if _observer is None:
         _on_input = on_input
-        _windows = [_cover(screen) for screen in NSScreen.screens()]
-        for win in _windows[1:]:
-            win.orderFrontRegardless()  # only the key window comes forward on its own
-        _windows[0].makeKeyAndOrderFront_(None)
+        _observer = NSNotificationCenter.defaultCenter().addObserverForName_object_queue_usingBlock_(
+            NSApplicationDidChangeScreenParametersNotification, None, NSOperationQueue.mainQueue(),
+            _cover_all)
+        _cover_all()
         NSApplication.sharedApplication().activateIgnoringOtherApps_(True)
         listen()
-    _set_badges(alarm)
-    if flash:
+    else:
+        _set_badges(alarm)
+        if flash:
+            _flash()
+
+
+def _cover_all(_note=None):
+    """Cover every display afresh: at show(), and when one is added, removed or resized."""
+    global _windows
+    for win in _windows:
+        win.orderOut_(None)
+    _badges.clear()
+    _whites.clear()
+    _windows = [_cover(screen) for screen in NSScreen.screens()]
+    for win in _windows[1:]:
+        win.orderFrontRegardless()  # only the key window comes forward on its own
+    if _windows:  # there may be no display at all for a moment
+        _windows[0].makeKeyAndOrderFront_(None)
+    _set_badges(_alarm)
+    if _flashing:
         _flash()
 
 
@@ -81,7 +105,7 @@ def listen(delay=1.5):
 
 
 def _watch():
-    if _windows and not _monitors:
+    if _observer is not None and not _monitors:  # covered, even if no display is right now
         _monitors.extend([
             NSEvent.addLocalMonitorForEventsMatchingMask_handler_(INPUT, _input),
             # input that lands in another app after Cmd-Tab (mouse only: keys need Accessibility)
@@ -115,8 +139,11 @@ def _set_badges(alarm):
 
 
 def hide():
-    global _windows
+    global _windows, _observer, _flashing
     _unwatch()
+    if _observer is not None:
+        NSNotificationCenter.defaultCenter().removeObserver_(_observer)
+    _observer, _flashing = None, False
     for display, level in _brightness.items():
         _DS.DisplayServicesSetBrightness(display, level)
     _brightness.clear()

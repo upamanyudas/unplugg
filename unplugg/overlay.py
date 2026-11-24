@@ -54,6 +54,8 @@ def show(on_input, alarm=False, flash=False):
     if not _windows:
         _on_input = on_input
         _windows = [_cover(screen) for screen in NSScreen.screens()]
+        for win in _windows[1:]:
+            win.orderFrontRegardless()  # only the key window comes forward on its own
         _windows[0].makeKeyAndOrderFront_(None)
         NSApplication.sharedApplication().activateIgnoringOtherApps_(True)
         listen()

@@ -2,10 +2,10 @@
   <img src="assets/logo.png" width="160" alt="unplugg app icon">
 </p>
 <h1 align="center">unplugg</h1>
-<p align="center">Your laptop, guarded while you step away.</p>
+<p align="center">A laptop guard while you step away.</p>
 
-A menu bar and tray app for MacBooks, Windows 10+ laptops and Linux laptops.
-Arm it before you leave your laptop in a café or library. If someone unplugs
+A menu bar and tray app for mac, windows 10+ and linux laptops.
+Arm it before you leave your laptop unattended in a café or library. If someone unplugs
 the charger, moves the screen or closes the lid, unplugg:
 
 - sounds a siren at full volume
@@ -22,7 +22,7 @@ button stop sleeping it, and a shutdown attempt sets off the alarm.
 
 ### macOS
 
-**Homebrew**
+**Homebrew (recommended)**
 
 ```bash
 brew tap upamanyudas/unplugg https://github.com/upamanyudas/unplugg
@@ -34,15 +34,14 @@ brew install --cask upamanyudas/unplugg/unplugg
 [Releases](https://github.com/upamanyudas/unplugg/releases/latest)
 (`arm64` = Apple Silicon, `x86_64` = Intel), then drag unplugg into Applications.
 
-unplugg isn't notarized; that needs a paid Apple account. The first time you
+unplugg isn't notarized. The first time you
 open it, go to **System Settings › Privacy & Security › Open Anyway**.
 
-Screen-move detection in degrees needs a 2019 or newer MacBook. Older ones
-detect the lid closing.
+Screen-move detection needs a 2019 or newer MacBook.
 
 ### Windows 10 and 11
 
-**Scoop**
+**Scoop (recommended)**
 
 ```powershell
 scoop bucket add unplugg https://github.com/upamanyudas/unplugg
@@ -54,14 +53,14 @@ scoop install unplugg/unplugg
 needed. Or `unplugg-windows-x64.zip` to run without installing. ARM laptops
 (Snapdragon): the `arm64` files.
 
-unplugg isn't signed yet. The first time, SmartScreen says "Windows protected
+unplugg isn't signed. The first time, SmartScreen says "Windows protected
 your PC": click **More info › Run anyway**.
 
 New tray icons hide under the **^** arrow. Drag unplugg onto the taskbar.
 
 ### Linux
 
-**Homebrew**
+**Homebrew (recommended)**
 
 ```bash
 brew tap upamanyudas/unplugg https://github.com/upamanyudas/unplugg

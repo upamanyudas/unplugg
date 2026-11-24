@@ -19,8 +19,10 @@ from PySide6.QtWidgets import QGraphicsOpacityEffect, QHBoxLayout, QLabel, QVBox
 from .utils import WINDOWS, app_icon, call_later
 
 _covers = []
-_on_input = None
+_on_input = None   # set while covered
 _watching = False
+_alarm = False     # what show() last asked for, for displays plugged in later
+_flashing = False
 _brightness = {}  # built-in display -> level before the flash
 
 
@@ -49,6 +51,7 @@ class _Cover(QWidget):
         column.addLayout(badge)
         column.addStretch()
         QVBoxLayout(self).addWidget(self.content)
+        self.home = screen  # Qt moves the cover onto the primary display once this one goes
         self.setScreen(screen)
         self.setGeometry(screen.geometry())
         self.pulse = QPropertyAnimation(QGraphicsOpacityEffect(self.dot), b"opacity")
@@ -81,22 +84,41 @@ class _Cover(QWidget):
 
 
 def show(on_input, alarm=False, flash=False):
-    """Cover every display; on later calls just flip the badge to the alarm state
-    (and flash). The first input after that calls on_input() once."""
-    global _on_input
-    if not _covers:
+    """Cover every display, and any plugged in while covered; on later calls just
+    flip the badge to the alarm state (and flash). The first input after that
+    calls on_input() once."""
+    global _on_input, _alarm, _flashing
+    _alarm, _flashing = alarm, _flashing or flash
+    _sync()
+    if _on_input is None:
         _on_input = on_input
-        for screen in QGuiApplication.screens():
+        app = QGuiApplication.instance()
+        app.screenAdded.connect(_sync)
+        app.screenRemoved.connect(_sync)
+        if _covers:
+            _covers[0].activateWindow()
+        listen()
+    if flash:
+        _brighten()
+
+
+def _sync(_screen=None):
+    """One cover per display, as displays come and go; each shows the alarm state."""
+    screens = QGuiApplication.screens()
+    for cover in [c for c in _covers if c.home not in screens]:
+        _covers.remove(cover)
+        cover.close()  # before Qt moves it onto the primary display
+        cover.deleteLater()
+    for screen in screens:
+        if screen not in [c.home for c in _covers]:
             cover = _Cover(screen)
             cover.showFullScreen()
             _covers.append(cover)
-        _covers[0].activateWindow()
-        listen()
     for cover in _covers:
-        cover.dot.setStyleSheet(f"color: {'#ff3b30' if alarm else '#34c759'}")
-        cover.badge.setText("Alarm triggered" if alarm else "Armed")
-    if flash:
-        _flash()
+        cover.dot.setStyleSheet(f"color: {'#ff3b30' if _alarm else '#34c759'}")
+        cover.badge.setText("Alarm triggered" if _alarm else "Armed")
+        if _flashing:
+            cover.flash()
 
 
 def window():
@@ -112,7 +134,7 @@ def listen(delay=1.5):
 
 def _watch():
     global _watching
-    _watching = bool(_covers)
+    _watching = _on_input is not None  # covered, even if no display is right now
 
 
 def _input():
@@ -123,8 +145,13 @@ def _input():
 
 
 def hide():
-    global _watching
+    global _watching, _on_input, _flashing
     _watching = False
+    if _on_input is not None:
+        app = QGuiApplication.instance()
+        app.screenAdded.disconnect(_sync)
+        app.screenRemoved.disconnect(_sync)
+    _on_input, _flashing = None, False
     if _brightness:
         _set_levels(_brightness)
         _brightness.clear()
@@ -134,9 +161,8 @@ def hide():
     _covers.clear()
 
 
-def _flash():
-    for cover in _covers:
-        cover.flash()
+def _brighten():
+    """Built-in screen to full for the flash; _sync() turns the covers white."""
     try:
         levels = _levels()
         _brightness.update({k: v for k, v in levels.items() if k not in _brightness})

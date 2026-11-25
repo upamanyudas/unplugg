@@ -1,12 +1,12 @@
 mod app;
 mod auth;
-mod power;
-#[allow(dead_code)]
-mod sensors;
 #[allow(dead_code)]
 mod loginitem;
 #[allow(dead_code)]
 mod permissions;
+mod power;
+#[allow(dead_code)]
+mod sensors;
 #[allow(dead_code)]
 mod utils;
 

@@ -5,15 +5,17 @@ use std::sync::{Arc, RwLock};
 use serde_json::{Map, Value};
 use windows_sys::Win32::Foundation::*;
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
-use windows_sys::Win32::System::Power::{RegisterPowerSettingNotification, UnregisterPowerSettingNotification, POWERBROADCAST_SETTING};
+use windows_sys::Win32::System::Power::{
+    RegisterPowerSettingNotification, UnregisterPowerSettingNotification, POWERBROADCAST_SETTING,
+};
 use windows_sys::Win32::System::Shutdown::ShutdownBlockReasonCreate;
 use windows_sys::Win32::System::SystemServices::GUID_LIDSWITCH_STATE_CHANGE;
 use windows_sys::Win32::System::Threading::CreateMutexW;
 use windows_sys::Win32::UI::Shell::*;
 use windows_sys::Win32::UI::WindowsAndMessaging::*;
 
-use crate::monitor::{Monitor, MonitorConfig, Sensors};
 use super::sensors::WinSensors;
+use crate::monitor::{Monitor, MonitorConfig, Sensors};
 
 const TRAY: u32 = WM_APP + 1;
 const ALARM: u32 = WM_APP + 2;
@@ -26,6 +28,7 @@ thread_local! {
 
 struct State {
     config: Map<String, Value>,
+    alarm_config: Arc<RwLock<Map<String, Value>>>,
     monitor: Monitor<WinSensors>,
     icon: NOTIFYICONDATAW,
 }
@@ -97,12 +100,15 @@ unsafe extern "system" fn window(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> 
             0
         }
         ALARM => {
+            let event = Box::from_raw(l as *mut (String, Map<String, Value>));
             STATE.with(|s| {
                 if let Some(state) = s.borrow_mut().as_mut() {
-                    set_icon(state, "alarm");
+                    if state.config["activated"] == true {
+                        set_icon(state, "alarm");
+                    }
+                    alarm(&event.0, &event.1);
                 }
             });
-            alarm();
             0
         }
         WM_COMMAND => {
@@ -120,22 +126,43 @@ unsafe extern "system" fn window(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> 
         }
         WM_POWERBROADCAST if w as u32 == PBT_POWERSETTINGCHANGE && l != 0 => {
             let setting = &*(l as *const POWERBROADCAST_SETTING);
-            if setting.PowerSetting.data1 == GUID_LIDSWITCH_STATE_CHANGE.data1 && setting.PowerSetting.data2 == GUID_LIDSWITCH_STATE_CHANGE.data2 && setting.PowerSetting.data3 == GUID_LIDSWITCH_STATE_CHANGE.data3 && setting.PowerSetting.data4 == GUID_LIDSWITCH_STATE_CHANGE.data4 && setting.DataLength >= 4 {
+            if setting.PowerSetting.data1 == GUID_LIDSWITCH_STATE_CHANGE.data1
+                && setting.PowerSetting.data2 == GUID_LIDSWITCH_STATE_CHANGE.data2
+                && setting.PowerSetting.data3 == GUID_LIDSWITCH_STATE_CHANGE.data3
+                && setting.PowerSetting.data4 == GUID_LIDSWITCH_STATE_CHANGE.data4
+                && setting.DataLength >= 4
+            {
                 let value = std::ptr::read_unaligned(setting.Data.as_ptr().cast::<u32>());
                 super::sensors::set_lid_closed(value == 0);
             }
             1
         }
         WM_POWERBROADCAST if w as u32 == PBT_APMSUSPEND => {
-            STATE.with(|s| if let Some(state) = s.borrow().as_ref() { state.monitor.trip("shutdown"); });
+            STATE.with(|s| {
+                if let Some(state) = s.borrow().as_ref() {
+                    state.monitor.trip("shutdown");
+                }
+            });
             1
         }
         WM_QUERYENDSESSION => {
-            let armed = STATE.with(|s| if let Some(state) = s.borrow().as_ref() {
-                if state.config["activated"] == true { state.monitor.trip("shutdown"); return true; }
-                false
-            } else { false });
-            if armed { ShutdownBlockReasonCreate(hwnd, wide("unplugg is armed").as_ptr()); 0 } else { 1 }
+            let armed = STATE.with(|s| {
+                if let Some(state) = s.borrow().as_ref() {
+                    if state.config["activated"] == true {
+                        state.monitor.trip("shutdown");
+                        return true;
+                    }
+                    false
+                } else {
+                    false
+                }
+            });
+            if armed {
+                ShutdownBlockReasonCreate(hwnd, wide("unplugg is armed").as_ptr());
+                0
+            } else {
+                1
+            }
         }
         WM_DESTROY => {
             PostQuitMessage(0);
@@ -146,15 +173,23 @@ unsafe extern "system" fn window(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> 
 }
 
 unsafe fn toggle(hwnd: HWND) {
-    let armed = STATE.with(|s| s.borrow().as_ref().is_some_and(|s| s.config["activated"] == true));
+    let armed = STATE.with(|s| {
+        s.borrow()
+            .as_ref()
+            .is_some_and(|s| s.config["activated"] == true)
+    });
     if armed {
-        if !super::auth::require("turn off the alarm", windows::Win32::Foundation::HWND(hwnd)) { return; }
-        STATE.with(|s| if let Some(state) = s.borrow_mut().as_mut() {
-            state.config["activated"] = false.into();
-            state.monitor.stop();
-            super::power::release(&mut state.config);
-            set_icon(state, "idle");
-            let _ = crate::config::save_config(&state.config);
+        if !super::auth::require("turn off the alarm", windows::Win32::Foundation::HWND(hwnd)) {
+            return;
+        }
+        STATE.with(|s| {
+            if let Some(state) = s.borrow_mut().as_mut() {
+                state.config["activated"] = false.into();
+                state.monitor.stop();
+                super::power::release(&mut state.config);
+                set_icon(state, "idle");
+                let _ = crate::config::save_config(&state.config);
+            }
         });
         return;
     }
@@ -162,25 +197,44 @@ unsafe fn toggle(hwnd: HWND) {
         MessageBoxW(hwnd, wide("It guards the power cable and the lid. This computer has no battery, so the alarm can't be activated here.").as_ptr(), wide("unplugg is made for laptops").as_ptr(), MB_OK);
         return;
     }
-    let monitor_power = STATE.with(|s| s.borrow().as_ref().is_some_and(|s| s.config["monitor_power"] == true));
+    let monitor_power = STATE.with(|s| {
+        s.borrow()
+            .as_ref()
+            .is_some_and(|s| s.config["monitor_power"] == true)
+    });
     if monitor_power && !WinSensors.is_plugged_in() {
         MessageBoxW(hwnd, wide("Your laptop should be plugged in to power before you can activate the alarm. Alternatively, turn off \"Power unplugged\" in Settings.").as_ptr(), wide("Plug in first").as_ptr(), MB_OK);
         return;
     }
-    STATE.with(|s| if let Some(state) = s.borrow_mut().as_mut() {
-        state.config["activated"] = true.into();
-        super::power::hold(&mut state.config);
-        state.monitor.start();
-        set_icon(state, "armed");
-        let _ = crate::config::save_config(&state.config);
+    STATE.with(|s| {
+        if let Some(state) = s.borrow_mut().as_mut() {
+            state.config["activated"] = true.into();
+            super::power::hold(&mut state.config);
+            *state.alarm_config.write().unwrap() = state.config.clone();
+            state.monitor.start();
+            set_icon(state, "armed");
+            if state.config["show_overlay"] == true {
+                show_overlay();
+            }
+            let _ = crate::config::save_config(&state.config);
+        }
     });
 }
 unsafe fn quit(hwnd: HWND) {
-    let armed = STATE.with(|s| s.borrow().as_ref().is_some_and(|s| s.config["activated"] == true));
-    if armed && !super::auth::require("quit while armed", windows::Win32::Foundation::HWND(hwnd)) { return; }
+    let armed = STATE.with(|s| {
+        s.borrow()
+            .as_ref()
+            .is_some_and(|s| s.config["activated"] == true)
+    });
+    if armed && !super::auth::require("quit while armed", windows::Win32::Foundation::HWND(hwnd)) {
+        return;
+    }
     STATE.with(|s| {
         if let Some(state) = s.borrow_mut().as_mut() {
             state.monitor.stop();
+            super::power::release(&mut state.config);
+            hide_overlay();
+            stop_alarm();
             Shell_NotifyIconW(NIM_DELETE, &state.icon);
             DestroyIcon(state.icon.hIcon);
         }
@@ -191,11 +245,16 @@ fn preferences() {}
 fn guide() {}
 fn dialogs() {}
 fn updates() {}
-fn alarm() {}
+fn alarm(_reason: &str, _config: &Map<String, Value>) {}
+fn stop_alarm() {}
+fn show_overlay() {}
+fn hide_overlay() {}
 
 pub fn run() {
     unsafe {
-        let _ = windows::Win32::System::WinRT::RoInitialize(windows::Win32::System::WinRT::RO_INIT_SINGLETHREADED);
+        let _ = windows::Win32::System::WinRT::RoInitialize(
+            windows::Win32::System::WinRT::RO_INIT_SINGLETHREADED,
+        );
         let mutex = CreateMutexW(null(), 0, wide("Local\\unplugg-rust-instance").as_ptr());
         if mutex.is_null() {
             return;
@@ -248,9 +307,17 @@ pub fn run() {
             angle_threshold: config["angle_threshold"].as_f64().unwrap_or(5.0),
         }));
         let target = hwnd as isize;
+        let alarm_config = Arc::new(RwLock::new(config.clone()));
+        let snapshot = Arc::clone(&alarm_config);
         let monitor = Monitor::new(
-            move |_| {
-                PostMessageW(target as HWND, ALARM, 0, 0);
+            move |reason| {
+                let event = Box::into_raw(Box::new((
+                    reason.to_owned(),
+                    snapshot.read().unwrap().clone(),
+                )));
+                if PostMessageW(target as HWND, ALARM, 0, event as LPARAM) == 0 {
+                    drop(Box::from_raw(event));
+                }
             },
             monitor_config,
             WinSensors,
@@ -267,18 +334,38 @@ pub fn run() {
         STATE.with(|s| {
             *s.borrow_mut() = Some(State {
                 config,
+                alarm_config,
                 monitor,
                 icon: tray,
             })
         });
-        let power_hwnd = CreateWindowExW(0, class.as_ptr(), class.as_ptr(), 0, 0, 0, 0, 0, null_mut(), null_mut(), instance, null());
-        let notification = RegisterPowerSettingNotification(power_hwnd, &GUID_LIDSWITCH_STATE_CHANGE, DEVICE_NOTIFY_WINDOW_HANDLE);
+        let power_hwnd = CreateWindowExW(
+            0,
+            class.as_ptr(),
+            class.as_ptr(),
+            0,
+            0,
+            0,
+            0,
+            0,
+            null_mut(),
+            null_mut(),
+            instance,
+            null(),
+        );
+        let notification = RegisterPowerSettingNotification(
+            power_hwnd,
+            &GUID_LIDSWITCH_STATE_CHANGE,
+            DEVICE_NOTIFY_WINDOW_HANDLE,
+        );
         let mut msg = MSG::default();
         while GetMessageW(&mut msg, null_mut(), 0, 0) > 0 {
             TranslateMessage(&msg);
             DispatchMessageW(&msg);
         }
-        if notification != 0 { UnregisterPowerSettingNotification(notification); }
+        if notification != 0 {
+            UnregisterPowerSettingNotification(notification);
+        }
         CloseHandle(mutex);
     }
 }

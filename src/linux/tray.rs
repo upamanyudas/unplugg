@@ -270,3 +270,19 @@ pub fn set_state(state: &str) {
         let _ = connection.emit_signal(None, ITEM, "org.kde.StatusNotifierItem", "NewIcon", None);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn replies_match_the_interfaces() {
+        let layout = Variant::tuple_from_iter([1u32.to_variant(), layout("Activate")]);
+        assert_eq!(layout.type_().as_str(), "(u(ia{sv}av))");
+        assert_eq!(vec![(1i32, 1i32, vec![0u8; 4])].to_variant().type_().as_str(), "a(iiay)");
+        assert_eq!(("", Vec::<(i32, i32, Vec<u8>)>::new(), "unplugg", "").to_variant().type_().as_str(), "(sa(iiay)ss)");
+        let groups: Vec<(i32, HashMap<String, Variant>)> = vec![(1, properties(1, "Activate"))];
+        assert_eq!((groups,).to_variant().type_().as_str(), "(a(ia{sv}))");
+        assert!(gio::DBusNodeInfo::for_xml(XML).is_ok());
+    }
+}

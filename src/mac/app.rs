@@ -14,7 +14,7 @@ use objc2_app_kit::{
     NSApplication, NSApplicationDelegate, NSApplicationTerminateReply, NSImage, NSMenu,
     NSMenuItem, NSStatusBar, NSStatusItem, NSVariableStatusItemLength,
 };
-use objc2_foundation::{NSActivityOptions, NSProcessInfo, NSString, NSTimer};
+use objc2_foundation::{NSActivityOptions, NSProcessInfo, NSRunLoop, NSRunLoopCommonModes, NSString, NSTimer};
 use serde_json::{Map, Value};
 
 use super::dialogs::{self, alert};
@@ -390,13 +390,15 @@ pub fn run() {
             None,
             false,
         );
-        NSTimer::scheduledTimerWithTimeInterval_target_selector_userInfo_repeats(
+        // common modes: the alarm still starts while a dialog or the menu is open
+        let poll = NSTimer::timerWithTimeInterval_target_selector_userInfo_repeats(
             0.1,
             &app,
             sel!(poll:),
             None,
             true,
         );
+        NSRunLoop::mainRunLoop().addTimer_forMode(&poll, NSRunLoopCommonModes);
     }
     application.run();
 }

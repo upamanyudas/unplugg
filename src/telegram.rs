@@ -44,6 +44,17 @@ pub fn send_alert(
     video: Option<&Path>,
     location_url: Option<&str>,
 ) {
+    send_alert_with_document(event, config, photo, video, location_url, None);
+}
+
+pub fn send_alert_with_document(
+    event: &str,
+    config: &Value,
+    photo: Option<&Path>,
+    video: Option<&Path>,
+    location_url: Option<&str>,
+    document: Option<&Path>,
+) {
     let Some(destinations) = config
         .get("telegram_destinations")
         .and_then(Value::as_array)
@@ -83,6 +94,7 @@ pub fn send_alert(
         );
         send_file(&format!("{base}/sendPhoto"), &chat, "photo", photo);
         send_file(&format!("{base}/sendVideo"), &chat, "video", video);
+        send_file(&format!("{base}/sendDocument"), &chat, "document", document);
     }
 }
 

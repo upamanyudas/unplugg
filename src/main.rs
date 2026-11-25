@@ -1,3 +1,6 @@
+#[allow(dead_code)]
+mod config;
+
 #[cfg(target_os = "linux")]
 mod linux;
 #[cfg(target_os = "macos")]

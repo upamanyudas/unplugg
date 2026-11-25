@@ -185,11 +185,11 @@ fn capture_all(config: &Value) -> Captured {
                     .and_then(Value::as_bool)
                     .unwrap_or(true)
                     .then(|| config.get("mic").and_then(Value::as_str).unwrap_or(""));
-                if let Ok(photo) = super::media::record_video(&api, &camera, microphone, &video) {
-                    result.photo = photo;
-                    if video.is_file() {
-                        result.video = Some(video);
-                    }
+                let (photo, recorded) =
+                    super::media::record_video(&api, &camera, microphone, &video);
+                result.photo = photo;
+                if recorded && video.is_file() {
+                    result.video = Some(video);
                 }
             }
         }

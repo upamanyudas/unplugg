@@ -242,11 +242,14 @@ pub unsafe fn record_video(
     camera: &str,
     microphone: Option<&str>,
     path: &std::path::Path,
-) -> windows::core::Result<Option<std::path::PathBuf>> {
+) -> (Option<std::path::PathBuf>, bool) {
     use std::time::{Duration, Instant};
     use windows::Win32::Media::MediaFoundation::*;
 
-    (api.startup)(MF_VERSION, 0).ok()?;
+    if (api.startup)(MF_VERSION, 0).is_err() {
+        return (None, false);
+    }
+    let mut photo = None;
     let result = (|| {
         let (source, reader) = video_source(api, camera)?;
         let mut audio = microphone.and_then(|name| audio_source(api, name).ok());
@@ -272,7 +275,6 @@ pub unsafe fn record_video(
             let height = size as u32;
             let stride = format.GetUINT32(&MF_MT_DEFAULT_STRIDE).unwrap_or(width);
             let stem = path.file_stem().unwrap_or_default().to_string_lossy();
-            let mut photo = None;
             let mut next_photo = 1;
             let mut first = None;
             let until = Instant::now() + Duration::from_secs(25);
@@ -346,7 +348,7 @@ pub unsafe fn record_video(
                 return Err(windows::core::Error::empty());
             }
             writer.Finalize()?;
-            Ok(photo)
+            Ok(())
         })();
         if let Some((audio, _)) = audio {
             let _ = audio.Shutdown();
@@ -358,7 +360,7 @@ pub unsafe fn record_video(
     if result.is_err() {
         let _ = std::fs::remove_file(path);
     }
-    result
+    (photo, result.is_ok())
 }
 
 unsafe fn save_jpeg(

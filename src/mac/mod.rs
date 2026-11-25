@@ -6,6 +6,8 @@ mod capture;
 #[allow(dead_code)]
 mod devices;
 #[allow(dead_code)]
+mod location;
+#[allow(dead_code)]
 mod loginitem;
 mod overlay;
 #[allow(dead_code)]

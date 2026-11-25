@@ -1,4 +1,7 @@
 #[allow(dead_code)]
+mod live;
+
+#[allow(dead_code)]
 mod updater;
 
 #[allow(dead_code)]

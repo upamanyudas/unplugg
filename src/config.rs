@@ -35,7 +35,7 @@ pub fn defaults() -> Config {
     json!({
         "activated": false, "monitor_power": true, "monitor_lid": true,
         "monitor_motion": true, "angle_threshold": 5, "play_sound": true,
-        "send_location": true, "capture_media": true, "flash_screen": true,
+        "send_location": true, "live_location": true, "capture_media": true, "flash_screen": true,
         "record_audio": true, "camera": "", "mic": "", "speaker_name": "",
         "media_dir": home().join("Pictures/unplugg").to_string_lossy(),
         "telegram_destinations": [], "show_overlay": true, "lock_device": false,

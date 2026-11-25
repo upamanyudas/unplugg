@@ -31,6 +31,7 @@ struct State {
     alarm_config: Arc<RwLock<Map<String, Value>>>,
     monitor: Monitor<WinSensors>,
     icon: NOTIFYICONDATAW,
+    menu_owner: HWND,
 }
 
 fn wide(s: &str) -> Vec<u16> {
@@ -92,7 +93,10 @@ unsafe fn menu(hwnd: HWND) {
 unsafe extern "system" fn window(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
     match msg {
         TRAY if l as u32 == WM_LBUTTONUP || l as u32 == WM_RBUTTONUP => {
-            menu(hwnd);
+            let owner = STATE.with(|s| s.borrow().as_ref().map(|state| state.menu_owner));
+            if let Some(owner) = owner {
+                menu(owner);
+            }
             0
         }
         SETTINGS => {
@@ -331,14 +335,6 @@ pub fn run() {
         tray.hIcon = icon("idle");
         tray.szTip[..8].copy_from_slice(&wide("unplugg"));
         Shell_NotifyIconW(NIM_ADD, &tray);
-        STATE.with(|s| {
-            *s.borrow_mut() = Some(State {
-                config,
-                alarm_config,
-                monitor,
-                icon: tray,
-            })
-        });
         let power_hwnd = CreateWindowExW(
             0,
             class.as_ptr(),
@@ -353,6 +349,15 @@ pub fn run() {
             instance,
             null(),
         );
+        STATE.with(|s| {
+            *s.borrow_mut() = Some(State {
+                config,
+                alarm_config,
+                monitor,
+                icon: tray,
+                menu_owner: power_hwnd,
+            })
+        });
         let notification = RegisterPowerSettingNotification(
             power_hwnd,
             &GUID_LIDSWITCH_STATE_CHANGE,

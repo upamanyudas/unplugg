@@ -7,6 +7,8 @@ mod devices;
 #[allow(dead_code)]
 mod loginitem;
 #[allow(dead_code)]
+mod location;
+#[allow(dead_code)]
 mod permissions;
 mod overlay;
 mod power;

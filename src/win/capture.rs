@@ -10,31 +10,9 @@ use windows::Win32::Media::Audio::{
 use windows::Win32::System::Com::{
     CoInitializeEx, CoTaskMemFree, CoUninitialize, CLSCTX_ALL, COINIT_MULTITHREADED,
 };
-use windows_sys::Win32::Foundation::FreeLibrary;
-use windows_sys::Win32::System::LibraryLoader::{LoadLibraryExW, LOAD_LIBRARY_SEARCH_SYSTEM32};
-
-fn media_foundation_available() -> bool {
-    ["mfplat.dll", "mfreadwrite.dll", "mf.dll"]
-        .iter()
-        .all(|name| unsafe {
-            let wide: Vec<u16> = name.encode_utf16().chain(Some(0)).collect();
-            let module = LoadLibraryExW(
-                wide.as_ptr(),
-                std::ptr::null_mut(),
-                LOAD_LIBRARY_SEARCH_SYSTEM32,
-            );
-            if module.is_null() {
-                false
-            } else {
-                FreeLibrary(module);
-                true
-            }
-        })
-}
-
 // Returns a WAV only on systems without Media Foundation.
 pub fn capture(config: &Value) -> Option<PathBuf> {
-    if media_foundation_available()
+    if unsafe { super::media::MediaFoundation::load().is_some() }
         || !config
             .get("record_audio")
             .and_then(Value::as_bool)

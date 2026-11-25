@@ -399,6 +399,19 @@ pub fn run() {
         let mut config = crate::config::load_config().unwrap_or_else(|_| crate::config::defaults());
         config["activated"] = false.into();
         super::power::release(&mut config);
+        if !super::sensors::is_laptop()
+            && super::overlay::confirm(
+                null_mut(),
+                "unplugg is made for laptops",
+                "It guards the power cable and the lid. This computer has no battery, so the alarm can't be activated here.",
+                "Quit",
+                "Open Anyway",
+            )
+        {
+            DestroyWindow(hwnd);
+            CloseHandle(mutex);
+            return;
+        }
         let monitor_config = Arc::new(RwLock::new(MonitorConfig {
             monitor_power: config["monitor_power"] == true,
             monitor_lid: config["monitor_lid"] == true,

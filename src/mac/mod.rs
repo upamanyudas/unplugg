@@ -1,3 +1,4 @@
+mod app;
 #[allow(dead_code)]
 mod auth;
 #[allow(dead_code)]
@@ -9,4 +10,6 @@ mod sensors;
 #[allow(dead_code)]
 mod utils;
 
-pub fn run() {}
+pub fn run() {
+    app::run();
+}

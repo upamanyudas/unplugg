@@ -6,7 +6,7 @@ use block2::RcBlock;
 use objc2::rc::Retained;
 use objc2::runtime::Bool;
 use objc2::{msg_send, ClassType};
-use objc2_foundation::{NSDate, NSError, NSRunLoop, NSString, NSDefaultRunLoopMode};
+use objc2_foundation::{NSDate, NSDefaultRunLoopMode, NSError, NSRunLoop, NSString};
 use objc2_local_authentication::{LAContext, LAPolicy};
 
 static ASKING: AtomicBool = AtomicBool::new(false);

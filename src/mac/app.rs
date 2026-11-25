@@ -14,7 +14,9 @@ use objc2_app_kit::{
     NSApplication, NSApplicationDelegate, NSApplicationTerminateReply, NSImage, NSMenu,
     NSMenuItem, NSStatusBar, NSStatusItem, NSVariableStatusItemLength,
 };
-use objc2_foundation::{NSActivityOptions, NSProcessInfo, NSRunLoop, NSRunLoopCommonModes, NSString, NSTimer};
+use objc2_foundation::{
+    NSActivityOptions, NSProcessInfo, NSRunLoop, NSRunLoopCommonModes, NSSize, NSString, NSTimer,
+};
 use serde_json::{Map, Value};
 
 use super::dialogs::{self, alert};
@@ -239,6 +241,8 @@ fn set_icon(item: &NSStatusItem, name: &str, template: bool) {
         NSImage::alloc(),
         &NSString::from_str(&path.to_string_lossy()),
     ) {
+        // rumps drew it at 20 pt, smaller looks wrong next to the old app
+        image.setSize(NSSize::new(20.0, 20.0));
         image.setTemplate(template);
         if let Some(button) = item.button(MainThreadMarker::new().unwrap()) {
             button.setImage(Some(&image));

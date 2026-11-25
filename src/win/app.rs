@@ -32,6 +32,7 @@ struct State {
     config: Map<String, Value>,
     alarm_config: Arc<RwLock<Map<String, Value>>>,
     monitor: Monitor<WinSensors>,
+    monitor_config: Arc<RwLock<MonitorConfig>>,
     icon: NOTIFYICONDATAW,
     menu_owner: HWND,
     siren: Option<super::siren::Siren>,
@@ -147,10 +148,10 @@ unsafe extern "system" fn window(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> 
             match w & 0xffff {
                 1 => toggle(hwnd),
                 2 => preferences(),
-                3 => dialogs(),
+                3 => super::guide::about(),
                 4 => updates(),
                 5 => guide(),
-                6 => dialogs(),
+                6 => super::guide::help(),
                 7 => quit(hwnd),
                 _ => (),
             }
@@ -276,9 +277,10 @@ unsafe fn quit(hwnd: HWND) {
     });
     DestroyWindow(hwnd);
 }
-fn preferences() {}
-fn guide() {}
-fn dialogs() {}
+fn preferences() {
+    super::ui::open_settings();
+}
+fn guide() { super::guide::open(); }
 fn updates() {}
 fn alarm(reason: String, config: Map<String, Value>) {
     let config = Value::Object(config);
@@ -350,8 +352,7 @@ unsafe fn unlock(hwnd: HWND) {
         "Keep Armed hides this cover; the alarm keeps watching.",
         "Deactivate",
         "Keep Armed",
-    )
-    {
+    ) {
         deactivate();
     }
 }
@@ -440,7 +441,7 @@ pub fn run() {
                     drop(Box::from_raw(event));
                 }
             },
-            monitor_config,
+            Arc::clone(&monitor_config),
             WinSensors,
         );
         let mut tray = NOTIFYICONDATAW::default();
@@ -471,12 +472,16 @@ pub fn run() {
                 config,
                 alarm_config,
                 monitor,
+                monitor_config,
                 icon: tray,
                 menu_owner: power_hwnd,
                 siren: None,
                 tracking: None,
             })
         });
+        if self::config()["setup_done"] != true {
+            guide();
+        }
         let notification = RegisterPowerSettingNotification(
             power_hwnd,
             &GUID_LIDSWITCH_STATE_CHANGE,
@@ -484,12 +489,39 @@ pub fn run() {
         );
         let mut msg = MSG::default();
         while GetMessageW(&mut msg, null_mut(), 0, 0) > 0 {
-            TranslateMessage(&msg);
-            DispatchMessageW(&msg);
+            if !super::guide::dialog_message(&msg) && !super::ui::dialog_message(&msg) {
+                TranslateMessage(&msg);
+                DispatchMessageW(&msg);
+            }
         }
         if notification != 0 {
             UnregisterPowerSettingNotification(notification);
         }
         CloseHandle(mutex);
     }
+}
+
+pub fn config() -> Map<String, Value> {
+    STATE.with(|s| {
+        s.borrow()
+            .as_ref()
+            .map(|state| state.config.clone())
+            .unwrap_or_default()
+    })
+}
+
+pub fn update_config(key: &str, value: Value) {
+    STATE.with(|s| {
+        if let Some(state) = s.borrow_mut().as_mut() {
+            state.config.insert(key.into(), value);
+            *state.alarm_config.write().unwrap() = state.config.clone();
+            *state.monitor_config.write().unwrap() = MonitorConfig {
+                monitor_power: state.config["monitor_power"] == true,
+                monitor_lid: state.config["monitor_lid"] == true,
+                monitor_motion: state.config["monitor_motion"] == true,
+                angle_threshold: state.config["angle_threshold"].as_f64().unwrap_or(5.0),
+            };
+            let _ = crate::config::save_config(&state.config);
+        }
+    });
 }

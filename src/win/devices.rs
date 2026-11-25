@@ -139,3 +139,23 @@ pub fn camera(selected: &str) -> Option<String> {
         .or_else(|| devices.first())
         .map(|(_, id, _)| id.clone())
 }
+
+pub fn default_microphone_name() -> Option<String> {
+    unsafe {
+        let enumerator = enumerator().ok()?;
+        name(
+            &enumerator
+                .GetDefaultAudioEndpoint(eCapture, eConsole)
+                .ok()?,
+        )
+    }
+}
+
+pub fn default_camera_name() -> Option<String> {
+    let devices = video_devices();
+    devices
+        .iter()
+        .find(|(_, _, default)| *default)
+        .or_else(|| devices.first())
+        .map(|(name, _, _)| name.clone())
+}

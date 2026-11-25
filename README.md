@@ -4,19 +4,23 @@
 <h1 align="center">unplugg</h1>
 <p align="center">A laptop guard while you step away.</p>
 
-A menu bar and tray app for mac, windows 10+ and linux laptops.
+A menu bar and tray app for mac, windows 10+ and linux laptops. Tiny: a few MB
+to download, nothing else to install.
 Arm it before you leave your laptop unattended in a café or library. If someone unplugs
 the charger, moves the screen or closes the lid, unplugg:
 
 - sounds a siren at full volume
 - records photos and a 10-second video with sound
 - sends them to your phone on Telegram, with a map link
+- shares a live location that follows the laptop, until you turn it off
 - locks the laptop, if you want
 
 Only you can turn it off: Touch ID, Windows Hello or your password.
 
 While armed, the laptop stays awake. On Windows and Linux, the lid and power
-button stop sleeping it, and a shutdown attempt sets off the alarm.
+button stop sleeping it, and a shutdown attempt sets off the alarm. On a Mac,
+**Settings › General › Stay awake with the lid closed** does the same for the
+lid. It asks for your admin password once, and tells you why first.
 
 ## Install
 
@@ -30,9 +34,9 @@ brew trust --cask upamanyudas/unplugg/unplugg
 brew install --cask upamanyudas/unplugg/unplugg
 ```
 
-**Download:** get the `.dmg` for your Mac from
-[Releases](https://github.com/upamanyudas/unplugg/releases/latest)
-(`arm64` = Apple Silicon, `x86_64` = Intel), then drag unplugg into Applications.
+**Download:** get `unplugg.dmg` from
+[Releases](https://github.com/upamanyudas/unplugg/releases/latest), one file for
+Apple Silicon and Intel, then drag unplugg into Applications.
 
 unplugg isn't notarized. The first time you
 open it, go to **System Settings › Privacy & Security › Open Anyway**.
@@ -58,6 +62,9 @@ your PC": click **More info › Run anyway**.
 
 New tray icons hide under the **^** arrow. Drag unplugg onto the taskbar.
 
+Windows N without the Media Feature Pack has no webcam support, so unplugg
+records 10 seconds of sound instead of photos and video.
+
 ### Linux
 
 **Homebrew (recommended)**
@@ -74,14 +81,14 @@ brew install --cask upamanyudas/unplugg/unplugg
 - `unplugg-linux-amd64.deb`: Ubuntu, Debian. `sudo apt install ./unplugg-linux-amd64.deb`
 - `unplugg-linux-x86_64.rpm`: Fedora, openSUSE. `sudo dnf install ./unplugg-linux-x86_64.rpm`
 
-ARM laptops: the `arm64` files. x86_64 needs Ubuntu 22.04, Debian 12, Fedora
-36 or newer. ARM64 needs Ubuntu 24.04 or newer.
+ARM laptops: the `arm64` files. Both need Ubuntu 22.04, Debian 12, Fedora 36
+or newer, with GTK 3, which every desktop has.
 
 - **GNOME:** tray icons need the AppIndicator extension. Ubuntu has it already.
 - **Disarming:** the .deb and .rpm use your desktop's own password dialog. The
   AppImage and Homebrew ask in unplugg's own box.
 - **Siren volume** needs `pactl` (`pulseaudio-utils`). Most desktops have it.
-- **AppImage on Ubuntu 24.04+ (X11):** `sudo apt install libxcb-cursor0` if it won't start.
+- **Location** comes from GeoClue. Turn on the desktop's location switch.
 
 Windows and Linux detect the lid closing. 2-in-1s with a motion sensor also
 alarm when picked up.
@@ -100,6 +107,16 @@ Reopen it from the menu with **Setup Guide…**. Every permission is optional.
 
 Give unplugg its own bot. If another app reads the same bot, it takes the
 messages and Auto-detect can't see them.
+
+### Live location
+
+When the alarm goes off, unplugg also shares a live location in each Telegram
+chat. It moves at most every 30 s, and only when the laptop does. It stops when
+you turn the alarm off, and Telegram says so. Turn it off in **Settings › Alerts ›
+Send live location**.
+
+It can't outlast the laptop: sleep, no internet or a flat battery stop it. Check
+the time of the last update in Telegram.
 
 ### Make alerts loud on your phone
 

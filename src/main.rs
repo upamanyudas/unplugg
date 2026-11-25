@@ -1,4 +1,7 @@
 #[allow(dead_code)]
+mod telegram;
+
+#[allow(dead_code)]
 mod config;
 
 #[cfg(target_os = "linux")]

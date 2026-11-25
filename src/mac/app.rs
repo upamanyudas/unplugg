@@ -18,7 +18,7 @@ use objc2_foundation::{NSActivityOptions, NSProcessInfo, NSString, NSTimer};
 use serde_json::{Map, Value};
 
 use super::dialogs::{self, alert};
-use super::{auth, capture, guide, location, overlay, prefs, sensors, siren, utils};
+use super::{auth, capture, guide, location, overlay, prefs, sensors, siren, updater, utils};
 use crate::live;
 use crate::monitor::{Monitor, MonitorConfig, Sensors};
 
@@ -101,7 +101,7 @@ define_class!(
         #[unsafe(method(about:))]
         fn about(&self, _: &AnyObject) { dialogs::show_about(); }
         #[unsafe(method(updates:))]
-        fn updates(&self, _: &AnyObject) { check_updates(); }
+        fn updates(&self, _: &AnyObject) { updater::check(true); }
         #[unsafe(method(guide:))]
         fn guide(&self, _: &AnyObject) { guide::open(self); }
         #[unsafe(method(help:))]
@@ -116,9 +116,19 @@ define_class!(
             if self.get("setup_done") != true { guide::open(self); }
         }
         #[unsafe(method(scheduleUpdates:))]
-        fn schedule_updates(&self, _: &AnyObject) { schedule_updates(); }
+        fn schedule_updates(&self, _: &AnyObject) {
+            if self.get("check_updates") == true { updater::check(false); }
+            unsafe {
+                NSTimer::scheduledTimerWithTimeInterval_target_selector_userInfo_repeats(
+                    updater::DAY, self, sel!(scheduleUpdates:), None, false);
+            }
+        }
         #[unsafe(method(poll:))]
         fn poll(&self, _: &AnyObject) {
+            // never stack an update offer on another dialog
+            if NSApplication::sharedApplication(self.mtm()).modalWindow().is_none() {
+                updater::poll(self);
+            }
             let mut state = self.ivars().0.borrow_mut();
             let state = state.as_mut().unwrap();
             if let Ok(reason) = state.events.try_recv() {
@@ -391,8 +401,6 @@ pub fn run() {
     application.run();
 }
 
-fn check_updates() {}
-fn schedule_updates() {}
 fn prepare_alarm() {
     siren::prepare();
 }

@@ -1,4 +1,7 @@
 #[allow(dead_code)]
+mod updater;
+
+#[allow(dead_code)]
 mod monitor;
 
 #[allow(dead_code)]

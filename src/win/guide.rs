@@ -353,10 +353,6 @@ pub fn open() {
     }
 }
 
-pub fn is_open() -> bool {
-    GUIDE.with(|state| !state.borrow().hwnd.is_null())
-}
-
 pub unsafe fn dialog_message(msg: &MSG) -> bool {
     let hwnd = GUIDE.with(|state| state.borrow().hwnd);
     !hwnd.is_null() && IsDialogMessageW(hwnd, msg) != 0

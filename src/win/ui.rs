@@ -143,7 +143,7 @@ unsafe fn page(hwnd: HWND, index: usize) {
     let checks = |keys: &[&str]| -> Vec<String> {
         keys.iter().filter(|k| **k != "monitor_motion" || sensors::acceleration().is_some()).map(|k| k.to_string()).collect()
     };
-    let mut boxes = |controls: &mut Vec<HWND>, y: &mut i32, title: &str, keys: Vec<String>| {
+    let boxes = |controls: &mut Vec<HWND>, y: &mut i32, title: &str, keys: Vec<String>| {
         let mut row = group(hwnd, controls, y, title, keys.len() as i32, ROW);
         for key in keys {
             check(hwnd, controls, &config, &key, row);
@@ -864,8 +864,3 @@ pub(super) unsafe fn dpi_changed(hwnd: HWND, w: WPARAM, l: LPARAM) {
     );
 }
 
-pub(super) fn is_open() -> bool {
-    let settings = UI.with(|ui| !ui.borrow().hwnd.is_null());
-    let telegram = TELEGRAM.with(|ui| !ui.borrow().hwnd.is_null());
-    settings || telegram
-}

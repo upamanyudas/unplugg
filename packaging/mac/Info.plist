@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleName</key>
+	<string>unplugg</string>
+	<key>CFBundleDisplayName</key>
+	<string>unplugg</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.unplugg.app</string>
+	<key>CFBundleExecutable</key>
+	<string>unplugg</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleIconFile</key>
+	<string>logo</string>
+	<key>CFBundleIconName</key>
+	<string>unplugg</string>
+	<key>CFBundleVersion</key>
+	<string>@VERSION@</string>
+	<key>CFBundleShortVersionString</key>
+	<string>@VERSION@</string>
+	<key>NSHumanReadableCopyright</key>
+	<string>Copyright © 2025 Upa Das. MIT License.</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>10.15</string>
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>unplugg captures photos and video when your Mac is disturbed.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>unplugg records sound with the video when your Mac is disturbed.</string>
+	<key>NSLocationUsageDescription</key>
+	<string>unplugg includes your Mac's location in the alert you receive.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>unplugg includes your Mac's location in the alert you receive.</string>
+</dict>
+</plist>

@@ -94,9 +94,12 @@ pub unsafe fn record_wav(
     let capture: IAudioCaptureClient = client.GetService()?;
     let mut data = Vec::new();
     client.Start()?;
-    let until = Instant::now() + Duration::from_secs(10);
-    let result = (|| -> windows::core::Result<()> {
-        while Instant::now() < until {
+    let until = Instant::now() + Duration::from_secs(15);
+    let result = (|| -> Result<(), Box<dyn std::error::Error>> {
+        while data.len() / block_align < max_frames {
+            if Instant::now() >= until {
+                return Err("audio capture timed out".into());
+            }
             while data.len() / block_align < max_frames && capture.GetNextPacketSize()? != 0 {
                 let mut buffer = std::ptr::null_mut();
                 let mut frames = 0;

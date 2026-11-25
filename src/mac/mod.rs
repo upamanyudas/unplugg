@@ -7,6 +7,7 @@ mod capture;
 mod devices;
 mod dialogs;
 mod guide;
+mod lidsleep;
 #[allow(dead_code)]
 mod location;
 #[allow(dead_code)]

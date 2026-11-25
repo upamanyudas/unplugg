@@ -39,7 +39,7 @@ pub fn defaults() -> Config {
         "record_audio": true, "camera": "", "mic": "", "speaker_name": "",
         "media_dir": home().join("Pictures/unplugg").to_string_lossy(),
         "telegram_destinations": [], "show_overlay": true, "lock_device": false,
-        "launch_at_login": false, "show_in_dock": false, "settings_pane": 0,
+        "launch_at_login": false, "block_lid_sleep": false, "show_in_dock": false, "settings_pane": 0,
         "setup_done": false, "check_updates": true, "auto_update": false,
         "skipped_version": "", "power_restore": {}
     })

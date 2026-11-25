@@ -38,7 +38,10 @@ fn how_it_works(_: &Prefs, view: &NSView, y: f64) -> f64 {
 }
 
 fn all_set(ctrl: &Prefs, view: &NSView, y: f64) -> f64 {
-    group(view, y, None, vec![("Launch at login", switch(ctrl, "launch_at_login"))], prefs::ROW)
+    group(view, y, None, vec![
+        ("Launch at login", switch(ctrl, "launch_at_login")),
+        ("Stay awake with the lid closed", switch(ctrl, "block_lid_sleep")),
+    ], prefs::ROW)
 }
 
 const STEPS: [(&str, &str, Body); 4] = [

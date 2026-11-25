@@ -115,6 +115,10 @@ define_class!(
         fn toggle(&self, sender: &NSSwitch) {
             let key = self.ivars().ui.borrow().checks[sender.tag() as usize];
             let on = sender.state() == 1;
+            if key == "block_lid_sleep" && !super::lidsleep::set(on, self.ivars().app.get("activated") == true) {
+                sender.setState(if on { 0 } else { 1 });
+                return;
+            }
             self.ivars().app.set(key, on.into());
             if key == "launch_at_login" {
                 let _ = if on { loginitem::enable() } else { loginitem::disable() };
@@ -324,6 +328,7 @@ fn general_page(ctrl: &Prefs, view: &NSView, y: f64) -> f64 {
     let y = group(view, y, Some("While armed"), vec![
         ("Show overlay", switch(ctrl, "show_overlay")),
         ("Lock Mac when triggered", switch(ctrl, "lock_device")),
+        ("Stay awake with the lid closed", switch(ctrl, "block_lid_sleep")),
     ], ROW);
     let y = group(view, y, None, vec![
         ("Show in Dock", switch(ctrl, "show_in_dock")),

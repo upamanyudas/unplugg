@@ -18,7 +18,7 @@ use objc2_foundation::{NSActivityOptions, NSProcessInfo, NSRunLoop, NSRunLoopCom
 use serde_json::{Map, Value};
 
 use super::dialogs::{self, alert};
-use super::{auth, capture, guide, location, overlay, prefs, sensors, siren, updater, utils};
+use super::{auth, capture, guide, lidsleep, location, overlay, prefs, sensors, siren, updater, utils};
 use crate::live;
 use crate::monitor::{Monitor, MonitorConfig, Sensors};
 
@@ -55,6 +55,7 @@ define_class!(
             let mut state = self.ivars().0.borrow_mut();
             let state = state.as_mut().unwrap();
             state.monitor.stop();
+            if state.config["block_lid_sleep"] == true { lidsleep::pmset(false); }
             stop_tracking(state);
             stop_alarm();
             hide_overlay();
@@ -90,6 +91,7 @@ define_class!(
             state.awake = Some(NSProcessInfo::processInfo().beginActivityWithOptions_reason(
                 NSActivityOptions::IdleSystemSleepDisabled, &NSString::from_str("The alarm is armed")));
             state.monitor.start();
+            if state.config["block_lid_sleep"] == true { lidsleep::pmset(true); }
             state.toggle.setTitle(&NSString::from_str("Deactivate"));
             set_icon(&state.item, "menubar_armed.pdf", true);
             if state.config["show_overlay"] == true { show_overlay(self, false, false); }
@@ -177,6 +179,9 @@ impl App {
         let state = state.as_mut().unwrap();
         state.config["activated"] = false.into();
         state.monitor.stop();
+        if state.config["block_lid_sleep"] == true {
+            lidsleep::pmset(false);
+        }
         stop_tracking(state);
         while state.events.try_recv().is_ok() {}
         if let Some(activity) = state.awake.take() {
@@ -325,6 +330,10 @@ pub fn run() {
     install_main_menu(&application, mtm);
     let mut config = crate::config::load_config().unwrap_or_else(|_| crate::config::defaults());
     config["activated"] = false.into();
+    if config["block_lid_sleep"] == true {
+        // a crash while armed left lid sleep off
+        lidsleep::pmset(false);
+    }
     utils::show_in_dock(config["show_in_dock"] == true, mtm);
     let laptop = sensors::is_laptop();
     if !laptop && alert("unplugg is made for MacBooks", "It guards the power cable and the lid. This Mac has no battery or lid, so the alarm can't be activated here.", &["Quit", "Open Anyway"]) == 0 { return; }

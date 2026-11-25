@@ -6,6 +6,7 @@ mod devices;
 mod loginitem;
 #[allow(dead_code)]
 mod permissions;
+mod overlay;
 mod power;
 #[allow(dead_code)]
 mod sensors;

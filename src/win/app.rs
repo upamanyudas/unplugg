@@ -20,6 +20,7 @@ use crate::monitor::{Monitor, MonitorConfig, Sensors};
 const TRAY: u32 = WM_APP + 1;
 const ALARM: u32 = WM_APP + 2;
 const SETTINGS: u32 = WM_APP + 3;
+const UNLOCK: u32 = WM_APP + 4;
 const CLASS: &str = "unplugg-tray-window";
 
 thread_local! {
@@ -100,6 +101,10 @@ unsafe extern "system" fn window(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> 
             }
             0
         }
+        UNLOCK => {
+            unlock(hwnd);
+            0
+        }
         SETTINGS => {
             preferences();
             0
@@ -110,6 +115,9 @@ unsafe extern "system" fn window(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> 
                 if let Some(state) = s.borrow_mut().as_mut() {
                     if state.config["activated"] == true {
                         set_icon(state, "alarm");
+                        if event.1["show_overlay"] == true || event.1["flash_screen"] == true {
+                            super::overlay::show(hwnd, UNLOCK, true, event.1["flash_screen"] == true);
+                        }
                         if event.1["play_sound"] == true && state.siren.is_none() {
                             state.siren = Some(super::siren::Siren::start(event.1["speaker_name"].as_str().unwrap_or("")));
                         }
@@ -190,16 +198,7 @@ unsafe fn toggle(hwnd: HWND) {
         if !super::auth::require("turn off the alarm", windows::Win32::Foundation::HWND(hwnd)) {
             return;
         }
-        STATE.with(|s| {
-            if let Some(state) = s.borrow_mut().as_mut() {
-                state.config["activated"] = false.into();
-                state.monitor.stop();
-                state.siren = None;
-                super::power::release(&mut state.config);
-                set_icon(state, "idle");
-                let _ = crate::config::save_config(&state.config);
-            }
-        });
+        deactivate();
         return;
     }
     if !super::sensors::is_laptop() {
@@ -223,7 +222,7 @@ unsafe fn toggle(hwnd: HWND) {
             state.monitor.start();
             set_icon(state, "armed");
             if state.config["show_overlay"] == true {
-                show_overlay();
+                super::overlay::show(hwnd, UNLOCK, false, false);
             }
             let _ = crate::config::save_config(&state.config);
         }
@@ -243,7 +242,7 @@ unsafe fn quit(hwnd: HWND) {
             state.monitor.stop();
             state.siren = None;
             super::power::release(&mut state.config);
-            hide_overlay();
+            super::overlay::hide();
             stop_alarm();
             Shell_NotifyIconW(NIM_DELETE, &state.icon);
             DestroyIcon(state.icon.hIcon);
@@ -257,8 +256,35 @@ fn dialogs() {}
 fn updates() {}
 fn alarm(_reason: &str, _config: &Map<String, Value>) {}
 fn stop_alarm() {}
-fn show_overlay() {}
-fn hide_overlay() {}
+unsafe fn deactivate() {
+    STATE.with(|s| {
+        if let Some(state) = s.borrow_mut().as_mut() {
+            state.config["activated"] = false.into();
+            state.monitor.stop();
+            state.siren = None;
+            super::power::release(&mut state.config);
+            super::overlay::hide();
+            set_icon(state, "idle");
+            let _ = crate::config::save_config(&state.config);
+        }
+    });
+}
+
+unsafe fn unlock(hwnd: HWND) {
+    if !super::auth::require("unlock the screen", windows::Win32::Foundation::HWND(super::overlay::window())) {
+        super::overlay::listen();
+        return;
+    }
+    super::overlay::hide();
+    STATE.with(|s| {
+        if let Some(state) = s.borrow_mut().as_mut() {
+            state.siren = None;
+        }
+    });
+    if MessageBoxW(hwnd, wide("Keep Armed hides this cover; the alarm keeps watching.\n\nDeactivate the alarm?").as_ptr(), wide("Deactivate the alarm?").as_ptr(), MB_YESNO | MB_ICONQUESTION) == IDYES {
+        deactivate();
+    }
+}
 
 pub fn run() {
     unsafe {

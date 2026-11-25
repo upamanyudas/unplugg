@@ -190,7 +190,10 @@ unsafe extern "system" fn window(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> 
                 }
             });
             if armed {
-                ShutdownBlockReasonCreate(hwnd, wide("unplugg is armed").as_ptr());
+                let cover = super::overlay::window();
+                if !cover.is_null() {
+                    ShutdownBlockReasonCreate(cover, wide("unplugg is armed").as_ptr());
+                }
                 0
             } else {
                 1

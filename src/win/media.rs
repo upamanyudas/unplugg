@@ -109,10 +109,84 @@ unsafe fn media_type(api: &MediaFoundation) -> windows::core::Result<IMFMediaTyp
     value.ok_or_else(windows::core::Error::empty)
 }
 
+// Both the Media Foundation callback and capture thread run in the COM MTA.
+struct Sample(windows::Win32::Media::MediaFoundation::IMFSample);
+unsafe impl Send for Sample {}
+
+type ReadResult = (HRESULT, u32, i64, Option<Sample>);
+
+#[windows::core::implement(windows::Win32::Media::MediaFoundation::IMFSourceReaderCallback)]
+struct ReadCallback(std::sync::mpsc::SyncSender<ReadResult>);
+
+impl windows::Win32::Media::MediaFoundation::IMFSourceReaderCallback_Impl for ReadCallback_Impl {
+    fn OnReadSample(
+        &self,
+        status: HRESULT,
+        _: u32,
+        flags: u32,
+        timestamp: i64,
+        sample: windows::core::Ref<windows::Win32::Media::MediaFoundation::IMFSample>,
+    ) -> windows::core::Result<()> {
+        let _ = self
+            .0
+            .try_send((status, flags, timestamp, sample.cloned().map(Sample)));
+        Ok(())
+    }
+    fn OnFlush(&self, _: u32) -> windows::core::Result<()> {
+        Ok(())
+    }
+    fn OnEvent(
+        &self,
+        _: u32,
+        _: windows::core::Ref<windows::Win32::Media::MediaFoundation::IMFMediaEvent>,
+    ) -> windows::core::Result<()> {
+        Ok(())
+    }
+}
+
+unsafe fn async_options(
+    api: &MediaFoundation,
+) -> windows::core::Result<(IMFAttributes, std::sync::mpsc::Receiver<ReadResult>)> {
+    use windows::Win32::Media::MediaFoundation::*;
+    let options = attributes(api)?;
+    let (sender, receiver) = std::sync::mpsc::sync_channel(1);
+    let callback: IMFSourceReaderCallback = ReadCallback(sender).into();
+    options.SetUnknown(&MF_SOURCE_READER_ASYNC_CALLBACK, &callback)?;
+    Ok((options, receiver))
+}
+
+unsafe fn read_sample(
+    reader: &IMFSourceReader,
+    stream: u32,
+    receiver: &std::sync::mpsc::Receiver<ReadResult>,
+    until: std::time::Instant,
+) -> windows::core::Result<(
+    u32,
+    i64,
+    Option<windows::Win32::Media::MediaFoundation::IMFSample>,
+)> {
+    reader.ReadSample(stream, 0, None, None, None, None)?;
+    let timeout = until.saturating_duration_since(std::time::Instant::now());
+    match receiver.recv_timeout(timeout) {
+        Ok((status, flags, timestamp, sample)) => {
+            status.ok()?;
+            Ok((flags, timestamp, sample.map(|sample| sample.0)))
+        }
+        Err(_) => {
+            let _ = reader.Flush(stream);
+            Err(windows::core::Error::empty())
+        }
+    }
+}
+
 unsafe fn video_source(
     api: &MediaFoundation,
     camera: &str,
-) -> windows::core::Result<(IMFMediaSource, IMFSourceReader)> {
+) -> windows::core::Result<(
+    IMFMediaSource,
+    IMFSourceReader,
+    std::sync::mpsc::Receiver<ReadResult>,
+)> {
     use windows::core::{Interface, PCWSTR};
     use windows::Win32::Media::MediaFoundation::*;
 
@@ -130,7 +204,7 @@ unsafe fn video_source(
     (api.device_source)(device_attrs.as_raw(), &mut source).ok()?;
     let source = source.ok_or_else(windows::core::Error::empty)?;
     let result = (|| {
-        let options = attributes(api)?;
+        let (options, receiver) = async_options(api)?;
         options.SetUINT32(&MF_SOURCE_READER_ENABLE_ADVANCED_VIDEO_PROCESSING, 1)?;
         let mut reader = None;
         (api.source_reader)(source.as_raw(), options.as_raw(), &mut reader).ok()?;
@@ -139,18 +213,22 @@ unsafe fn video_source(
         format.SetGUID(&MF_MT_MAJOR_TYPE, &MFMediaType_Video)?;
         format.SetGUID(&MF_MT_SUBTYPE, &MFVideoFormat_NV12)?;
         reader.SetCurrentMediaType(MF_SOURCE_READER_FIRST_VIDEO_STREAM.0 as u32, None, &format)?;
-        Ok(reader)
+        Ok((reader, receiver))
     })();
     if result.is_err() {
         let _ = source.Shutdown();
     }
-    result.map(|reader| (source, reader))
+    result.map(|(reader, receiver)| (source, reader, receiver))
 }
 
 unsafe fn audio_source(
     api: &MediaFoundation,
     microphone: &str,
-) -> windows::core::Result<(IMFMediaSource, IMFSourceReader)> {
+) -> windows::core::Result<(
+    IMFMediaSource,
+    IMFSourceReader,
+    std::sync::mpsc::Receiver<ReadResult>,
+)> {
     use windows::core::{Interface, PCWSTR};
     use windows::Win32::Media::Audio::eCapture;
     use windows::Win32::Media::MediaFoundation::*;
@@ -173,8 +251,9 @@ unsafe fn audio_source(
     (api.device_source)(attributes.as_raw(), &mut source).ok()?;
     let source = source.ok_or_else(windows::core::Error::empty)?;
     let result = (|| {
+        let (options, receiver) = async_options(api)?;
         let mut reader = None;
-        (api.source_reader)(source.as_raw(), null_mut(), &mut reader).ok()?;
+        (api.source_reader)(source.as_raw(), options.as_raw(), &mut reader).ok()?;
         let reader = reader.ok_or_else(windows::core::Error::empty)?;
         for (rate, channels) in [(48_000, 2), (44_100, 2), (48_000, 1), (44_100, 1)] {
             let format = media_type(api)?;
@@ -187,7 +266,7 @@ unsafe fn audio_source(
                 .SetCurrentMediaType(MF_SOURCE_READER_FIRST_AUDIO_STREAM.0 as u32, None, &format)
                 .is_ok()
             {
-                return Ok(reader);
+                return Ok((reader, receiver));
             }
         }
         Err(windows::core::Error::empty())
@@ -195,7 +274,7 @@ unsafe fn audio_source(
     if result.is_err() {
         let _ = source.Shutdown();
     }
-    result.map(|reader| (source, reader))
+    result.map(|(reader, receiver)| (source, reader, receiver))
 }
 
 unsafe fn video_writer(
@@ -267,14 +346,19 @@ pub unsafe fn record_video(
     }
     let mut photo = None;
     let result = (|| {
-        let (source, reader) = video_source(api, camera)?;
+        let (source, reader, video_reads) = video_source(api, camera)?;
         let mut audio = microphone.and_then(|name| audio_source(api, name).ok());
         let result = (|| {
-            let writer = video_writer(api, path, &reader, audio.as_ref().map(|(_, reader)| reader));
+            let writer = video_writer(
+                api,
+                path,
+                &reader,
+                audio.as_ref().map(|(_, reader, _)| reader),
+            );
             let (writer, stream, audio_stream) = match writer {
                 Ok(writer) => writer,
                 Err(_) if audio.is_some() => {
-                    if let Some((source, _)) = audio.take() {
+                    if let Some((source, _, _)) = audio.take() {
                         let _ = source.Shutdown();
                     }
                     let _ = std::fs::remove_file(path);
@@ -286,7 +370,7 @@ pub unsafe fn record_video(
             let mut audio_time = -1;
             let mut audio_ended = false;
             let mut audio_discontinuity = false;
-            let audio_format = audio.as_ref().and_then(|(_, reader)| {
+            let audio_format = audio.as_ref().and_then(|(_, reader, _)| {
                 let format = reader
                     .GetCurrentMediaType(MF_SOURCE_READER_FIRST_AUDIO_STREAM.0 as u32)
                     .ok()?;
@@ -306,16 +390,11 @@ pub unsafe fn record_video(
             let mut first = None;
             let until = Instant::now() + Duration::from_secs(25);
             while Instant::now() < until {
-                let mut flags = 0;
-                let mut timestamp = 0;
-                let mut sample = None;
-                reader.ReadSample(
+                let (flags, timestamp, sample) = read_sample(
+                    &reader,
                     MF_SOURCE_READER_FIRST_VIDEO_STREAM.0 as u32,
-                    0,
-                    None,
-                    Some(&mut flags),
-                    Some(&mut timestamp),
-                    Some(&mut sample),
+                    &video_reads,
+                    until,
                 )?;
                 if flags
                     & (MF_SOURCE_READERF_ERROR.0 | MF_SOURCE_READERF_CURRENTMEDIATYPECHANGED.0)
@@ -343,21 +422,18 @@ pub unsafe fn record_video(
                     }
                     sample.SetSampleTime(elapsed)?;
                     writer.WriteSample(stream, &sample)?;
-                    if let (Some((_, audio)), Some(audio_stream)) = (&audio, audio_stream) {
+                    if let (Some((_, audio, audio_reads)), Some(audio_stream)) =
+                        (&audio, audio_stream)
+                    {
                         if audio_ended {
                             continue;
                         }
                         while audio_time < elapsed {
-                            let mut flags = 0;
-                            let mut timestamp = 0;
-                            let mut audio_sample = None;
-                            audio.ReadSample(
+                            let (flags, timestamp, audio_sample) = read_sample(
+                                audio,
                                 MF_SOURCE_READER_FIRST_AUDIO_STREAM.0 as u32,
-                                0,
-                                None,
-                                Some(&mut flags),
-                                Some(&mut timestamp),
-                                Some(&mut audio_sample),
+                                audio_reads,
+                                until,
                             )?;
                             if flags
                                 & (MF_SOURCE_READERF_ERROR.0
@@ -408,7 +484,7 @@ pub unsafe fn record_video(
             writer.Finalize()?;
             Ok(())
         })();
-        if let Some((audio, _)) = audio {
+        if let Some((audio, _, _)) = audio {
             let _ = audio.Shutdown();
         }
         let _ = source.Shutdown();

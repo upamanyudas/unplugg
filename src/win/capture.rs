@@ -134,21 +134,7 @@ pub struct Captured {
 }
 
 pub fn capture_full(config: &Value) -> Captured {
-    let config = config.clone();
-    let (sender, receiver) = std::sync::mpsc::sync_channel(1);
-    let photo = std::sync::Arc::new(std::sync::Mutex::new(None));
-    let worker_photo = photo.clone();
-    std::thread::spawn(move || {
-        let result = capture_all(&config, &worker_photo);
-        let _ = sender.send(result);
-    });
-    receiver
-        .recv_timeout(Duration::from_secs(25))
-        .unwrap_or_else(|_| Captured {
-            photo: photo.lock().unwrap().clone(),
-            video: None,
-            document: None,
-        })
+    capture_all(config, &std::sync::Mutex::new(None))
 }
 
 fn capture_all(config: &Value, photo: &std::sync::Mutex<Option<PathBuf>>) -> Captured {

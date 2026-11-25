@@ -77,6 +77,24 @@ def pack_icns(iconset, out):
     out.write_bytes(b"icns" + struct.pack(">I", 8 + len(body)) + body)
 
 
+def png_256(ico, tmp):
+    """magick stores the 256 px size as a 270 KB bitmap; Windows reads PNG there too."""
+    png = tmp / "256.png"
+    run("magick", f"{ico}[0]", png)
+    run("oxipng", "-q", "-o", "max", "--strip", "safe", png)
+    data = ico.read_bytes()
+    count = struct.unpack_from("<H", data, 4)[0]
+    entries = [list(struct.unpack_from("<BBBBHHII", data, 6 + 16 * i)) for i in range(count)]
+    images = [data[e[7]:e[7] + e[6]] for e in entries]
+    images[0] = png.read_bytes()  # the first entry is the 256 px one
+    offset, table = 6 + 16 * count, b""
+    for entry, image in zip(entries, images):
+        entry[6], entry[7] = len(image), offset
+        table += struct.pack("<BBBBHHII", *entry)
+        offset += len(image)
+    ico.write_bytes(data[:6] + table + b"".join(images))
+
+
 def main():
     with tempfile.TemporaryDirectory() as t:
         tmp = Path(t)
@@ -100,6 +118,7 @@ def main():
         shutil.copy(iconset / "icon_512x512@2x.png", ASSETS / "logo.png")
         run("magick", ASSETS / "logo.png", "-define", "icon:auto-resize=256,64,48,32,24,16",
             ASSETS / "logo.ico")
+        png_256(ASSETS / "logo.ico", tmp)
 
         run("xcrun", "actool", DESIGN / "unplugg.icon", "--compile", tmp, "--app-icon", "unplugg",
             "--platform", "macosx", "--target-device", "mac",

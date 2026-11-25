@@ -1,6 +1,9 @@
 use std::cell::RefCell;
 use std::fs::{self, File, OpenOptions};
-use std::sync::{mpsc, Arc, RwLock};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    mpsc, Arc, RwLock,
+};
 
 use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, NSObject, NSObjectProtocol, ProtocolObject, Sel};
@@ -27,6 +30,7 @@ struct State {
     toggle: Retained<NSMenuItem>,
     awake: Option<Retained<ProtocolObject<dyn NSObjectProtocol>>>,
     tracking: Option<(location::Source, live::Tracker)>,
+    alarm_cancel: Option<Arc<AtomicBool>>,
 }
 
 struct AppIvars(RefCell<Option<State>>);
@@ -124,7 +128,9 @@ define_class!(
                     let source = location::Source::start(move |fix| updates.update(fix));
                     state.tracking = Some((source, tracker));
                 }
-                std::thread::spawn(move || trigger_alarm(&reason, &config));
+                let cancelled = Arc::new(AtomicBool::new(false));
+                state.alarm_cancel = Some(cancelled.clone());
+                std::thread::spawn(move || trigger_alarm(&reason, &config, &cancelled));
                 if state.config["play_sound"] == true { siren::start(state.config["speaker_name"].as_str().unwrap_or("")); }
                 set_icon(&state.item, "menubar_alarm.pdf", false);
                 if state.config["show_overlay"] == true || state.config["flash_screen"] == true {
@@ -350,6 +356,7 @@ pub fn run() {
         toggle,
         awake: None,
         tracking: None,
+        alarm_cancel: None,
     });
     application.setDelegate(Some(ProtocolObject::from_ref(&*app)));
     unsafe {
@@ -391,26 +398,35 @@ fn stop_alarm() {
     siren::stop();
 }
 fn stop_tracking(state: &mut State) {
+    if let Some(cancelled) = state.alarm_cancel.take() {
+        cancelled.store(true, Ordering::Relaxed);
+    }
     if let Some((source, tracker)) = state.tracking.take() {
         source.stop();
         tracker.stop();
     }
 }
 
-fn trigger_alarm(reason: &str, config: &Value) {
+fn trigger_alarm(reason: &str, config: &Value, cancelled: &AtomicBool) {
     if config["lock_device"] == true {
         utils::lock_screen();
     }
     let (photo, video) = if config["capture_media"] == true {
-        capture::capture(config)
+        capture::capture(config, cancelled)
     } else {
         (None, None)
     };
+    if cancelled.load(Ordering::Relaxed) {
+        return;
+    }
     let link = if config["send_location"] == true {
         location::maps_link(std::time::Duration::from_secs(8))
     } else {
         None
     };
+    if cancelled.load(Ordering::Relaxed) {
+        return;
+    }
     crate::telegram::send_alert(
         reason,
         config,

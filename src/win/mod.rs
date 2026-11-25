@@ -1,1 +1,5 @@
-pub fn run() {}
+mod app;
+
+pub fn run() {
+    app::run();
+}

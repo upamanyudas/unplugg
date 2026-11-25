@@ -126,3 +126,75 @@ pub unsafe fn record_wav(
     }
     Ok(())
 }
+
+pub struct Captured {
+    pub photo: Option<PathBuf>,
+    pub video: Option<PathBuf>,
+    pub document: Option<PathBuf>,
+}
+
+pub fn capture_full(config: &Value) -> Captured {
+    let config = config.clone();
+    let (sender, receiver) = std::sync::mpsc::sync_channel(1);
+    std::thread::spawn(move || {
+        let result = capture_all(&config);
+        let _ = sender.send(result);
+    });
+    receiver
+        .recv_timeout(Duration::from_secs(25))
+        .unwrap_or(Captured {
+            photo: None,
+            video: None,
+            document: None,
+        })
+}
+
+fn capture_all(config: &Value) -> Captured {
+    let mut result = Captured {
+        photo: None,
+        video: None,
+        document: None,
+    };
+    unsafe {
+        let Some(api) = super::media::MediaFoundation::load() else {
+            result.document = capture(config);
+            return result;
+        };
+        if CoInitializeEx(None, COINIT_MULTITHREADED).is_err() {
+            return result;
+        }
+        let camera =
+            super::devices::camera(config.get("camera").and_then(Value::as_str).unwrap_or(""));
+        if let Some(camera) = camera {
+            let home = crate::config::home();
+            let dir = match config
+                .get("media_dir")
+                .and_then(Value::as_str)
+                .filter(|s| !s.is_empty())
+            {
+                Some("~") => home,
+                Some(s) if s.starts_with("~/") || s.starts_with("~\\") => home.join(&s[2..]),
+                Some(s) => PathBuf::from(s),
+                None => home.join("Pictures/unplugg"),
+            };
+            if std::fs::create_dir_all(&dir).is_ok() {
+                let stamp = chrono::Local::now().format("%Y%m%d_%H%M%S");
+                let video = dir.join(format!("{stamp}.mp4"));
+                let microphone = config
+                    .get("record_audio")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(true)
+                    .then(|| config.get("mic").and_then(Value::as_str).unwrap_or(""));
+                if let Ok(photo) = super::media::record_video(&api, &camera, microphone, &video) {
+                    result.photo = photo;
+                    if video.is_file() {
+                        result.video = Some(video);
+                    }
+                }
+            }
+        }
+        drop(api);
+        CoUninitialize();
+    }
+    result
+}

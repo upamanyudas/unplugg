@@ -96,3 +96,342 @@ impl Drop for Libraries {
         }
     }
 }
+
+unsafe fn attributes(api: &MediaFoundation) -> windows::core::Result<IMFAttributes> {
+    let mut value = None;
+    (api.attributes)(&mut value, 4).ok()?;
+    value.ok_or_else(windows::core::Error::empty)
+}
+
+unsafe fn media_type(api: &MediaFoundation) -> windows::core::Result<IMFMediaType> {
+    let mut value = None;
+    (api.media_type)(&mut value).ok()?;
+    value.ok_or_else(windows::core::Error::empty)
+}
+
+unsafe fn video_source(
+    api: &MediaFoundation,
+    camera: &str,
+) -> windows::core::Result<(IMFMediaSource, IMFSourceReader)> {
+    use windows::core::{Interface, PCWSTR};
+    use windows::Win32::Media::MediaFoundation::*;
+
+    let attributes = attributes(api)?;
+    attributes.SetGUID(
+        &MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE,
+        &MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_GUID,
+    )?;
+    let camera: Vec<u16> = camera.encode_utf16().chain(Some(0)).collect();
+    attributes.SetString(
+        &MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_SYMBOLIC_LINK,
+        PCWSTR(camera.as_ptr()),
+    )?;
+    let mut source = None;
+    (api.device_source)(attributes.as_raw(), &mut source).ok()?;
+    let source = source.ok_or_else(windows::core::Error::empty)?;
+    let result = (|| {
+        let mut reader = None;
+        (api.source_reader)(source.as_raw(), null_mut(), &mut reader).ok()?;
+        let reader = reader.ok_or_else(windows::core::Error::empty)?;
+        let format = media_type(api)?;
+        format.SetGUID(&MF_MT_MAJOR_TYPE, &MFMediaType_Video)?;
+        format.SetGUID(&MF_MT_SUBTYPE, &MFVideoFormat_NV12)?;
+        reader.SetCurrentMediaType(MF_SOURCE_READER_FIRST_VIDEO_STREAM.0 as u32, None, &format)?;
+        Ok(reader)
+    })();
+    if result.is_err() {
+        let _ = source.Shutdown();
+    }
+    result.map(|reader| (source, reader))
+}
+
+unsafe fn audio_source(
+    api: &MediaFoundation,
+    microphone: &str,
+) -> windows::core::Result<(IMFMediaSource, IMFSourceReader)> {
+    use windows::core::{Interface, PCWSTR};
+    use windows::Win32::Media::Audio::eCapture;
+    use windows::Win32::Media::MediaFoundation::*;
+    use windows::Win32::System::Com::CoTaskMemFree;
+
+    let attributes = attributes(api)?;
+    let device = super::devices::endpoint(eCapture, microphone)?;
+    let id = device.GetId()?;
+    let result = attributes.SetString(
+        &MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_AUDCAP_ENDPOINT_ID,
+        PCWSTR(id.0),
+    );
+    CoTaskMemFree(Some(id.0.cast()));
+    result?;
+    attributes.SetGUID(
+        &MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE,
+        &MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_AUDCAP_GUID,
+    )?;
+    let mut source = None;
+    (api.device_source)(attributes.as_raw(), &mut source).ok()?;
+    let source = source.ok_or_else(windows::core::Error::empty)?;
+    let result = (|| {
+        let mut reader = None;
+        (api.source_reader)(source.as_raw(), null_mut(), &mut reader).ok()?;
+        let reader = reader.ok_or_else(windows::core::Error::empty)?;
+        let format = media_type(api)?;
+        format.SetGUID(&MF_MT_MAJOR_TYPE, &MFMediaType_Audio)?;
+        format.SetGUID(&MF_MT_SUBTYPE, &MFAudioFormat_PCM)?;
+        format.SetUINT32(&MF_MT_AUDIO_BITS_PER_SAMPLE, 16)?;
+        format.SetUINT32(&MF_MT_AUDIO_NUM_CHANNELS, 2)?;
+        format.SetUINT32(&MF_MT_AUDIO_SAMPLES_PER_SECOND, 48_000)?;
+        reader.SetCurrentMediaType(MF_SOURCE_READER_FIRST_AUDIO_STREAM.0 as u32, None, &format)?;
+        Ok(reader)
+    })();
+    if result.is_err() {
+        let _ = source.Shutdown();
+    }
+    result.map(|reader| (source, reader))
+}
+
+unsafe fn video_writer(
+    api: &MediaFoundation,
+    path: &std::path::Path,
+    reader: &IMFSourceReader,
+    audio: Option<&IMFSourceReader>,
+) -> windows::core::Result<(IMFSinkWriter, u32, Option<u32>)> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows::Win32::Media::MediaFoundation::*;
+
+    let path: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
+    let mut writer = None;
+    (api.sink_writer)(path.as_ptr(), null_mut(), null_mut(), &mut writer).ok()?;
+    let writer = writer.ok_or_else(windows::core::Error::empty)?;
+    let input = reader.GetCurrentMediaType(MF_SOURCE_READER_FIRST_VIDEO_STREAM.0 as u32)?;
+    let output = media_type(api)?;
+    output.SetGUID(&MF_MT_MAJOR_TYPE, &MFMediaType_Video)?;
+    output.SetGUID(&MF_MT_SUBTYPE, &MFVideoFormat_H264)?;
+    output.SetUINT64(&MF_MT_FRAME_SIZE, input.GetUINT64(&MF_MT_FRAME_SIZE)?)?;
+    output.SetUINT64(&MF_MT_FRAME_RATE, input.GetUINT64(&MF_MT_FRAME_RATE)?)?;
+    output.SetUINT64(
+        &MF_MT_PIXEL_ASPECT_RATIO,
+        input
+            .GetUINT64(&MF_MT_PIXEL_ASPECT_RATIO)
+            .unwrap_or((1u64 << 32) | 1),
+    )?;
+    output.SetUINT32(&MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive.0 as u32)?;
+    output.SetUINT32(&MF_MT_AVG_BITRATE, 4_000_000)?;
+    let stream = writer.AddStream(&output)?;
+    writer.SetInputMediaType(stream, &input, None)?;
+    let audio_stream = if let Some(audio) = audio {
+        let input = audio.GetCurrentMediaType(MF_SOURCE_READER_FIRST_AUDIO_STREAM.0 as u32)?;
+        let output = media_type(api)?;
+        output.SetGUID(&MF_MT_MAJOR_TYPE, &MFMediaType_Audio)?;
+        output.SetGUID(&MF_MT_SUBTYPE, &MFAudioFormat_AAC)?;
+        output.SetUINT32(&MF_MT_AUDIO_BITS_PER_SAMPLE, 16)?;
+        output.SetUINT32(&MF_MT_AUDIO_NUM_CHANNELS, 2)?;
+        output.SetUINT32(&MF_MT_AUDIO_SAMPLES_PER_SECOND, 48_000)?;
+        output.SetUINT32(&MF_MT_AUDIO_AVG_BYTES_PER_SECOND, 12_000)?;
+        let stream = writer.AddStream(&output)?;
+        writer.SetInputMediaType(stream, &input, None)?;
+        Some(stream)
+    } else {
+        None
+    };
+    writer.BeginWriting()?;
+    Ok((writer, stream, audio_stream))
+}
+
+pub unsafe fn record_video(
+    api: &MediaFoundation,
+    camera: &str,
+    microphone: Option<&str>,
+    path: &std::path::Path,
+) -> windows::core::Result<Option<std::path::PathBuf>> {
+    use std::time::{Duration, Instant};
+    use windows::Win32::Media::MediaFoundation::*;
+
+    (api.startup)(MF_VERSION, 0).ok()?;
+    let result = (|| {
+        let (source, reader) = video_source(api, camera)?;
+        let mut audio = microphone.and_then(|name| audio_source(api, name).ok());
+        let result = (|| {
+            let writer = video_writer(api, path, &reader, audio.as_ref().map(|(_, reader)| reader));
+            let (writer, stream, audio_stream) = match writer {
+                Ok(writer) => writer,
+                Err(_) if audio.is_some() => {
+                    if let Some((source, _)) = audio.take() {
+                        let _ = source.Shutdown();
+                    }
+                    let _ = std::fs::remove_file(path);
+                    video_writer(api, path, &reader, None)?
+                }
+                Err(error) => return Err(error),
+            };
+            let mut first_audio = None;
+            let mut audio_time = -1;
+            let format =
+                reader.GetCurrentMediaType(MF_SOURCE_READER_FIRST_VIDEO_STREAM.0 as u32)?;
+            let size = format.GetUINT64(&MF_MT_FRAME_SIZE)?;
+            let width = (size >> 32) as u32;
+            let height = size as u32;
+            let stride = format.GetUINT32(&MF_MT_DEFAULT_STRIDE).unwrap_or(width);
+            let stem = path.file_stem().unwrap_or_default().to_string_lossy();
+            let mut photo = None;
+            let mut next_photo = 1;
+            let mut first = None;
+            let until = Instant::now() + Duration::from_secs(25);
+            while Instant::now() < until {
+                let mut flags = 0;
+                let mut timestamp = 0;
+                let mut sample = None;
+                reader.ReadSample(
+                    MF_SOURCE_READER_FIRST_VIDEO_STREAM.0 as u32,
+                    0,
+                    None,
+                    Some(&mut flags),
+                    Some(&mut timestamp),
+                    Some(&mut sample),
+                )?;
+                if flags & MF_SOURCE_READERF_ERROR.0 as u32 != 0 {
+                    return Err(windows::core::Error::empty());
+                }
+                if flags & MF_SOURCE_READERF_ENDOFSTREAM.0 as u32 != 0 {
+                    break;
+                }
+                if let Some(sample) = sample {
+                    let start = *first.get_or_insert(timestamp);
+                    let elapsed = timestamp.saturating_sub(start);
+                    if next_photo <= 3 && elapsed >= next_photo * 10_000_000 {
+                        let image = path.with_file_name(format!("{stem}_{next_photo}.jpg"));
+                        if save_jpeg(&sample, width, height, stride, &image).is_ok() {
+                            photo = Some(image);
+                        }
+                        next_photo += 1;
+                    }
+                    if elapsed >= 100_000_000 {
+                        break;
+                    }
+                    sample.SetSampleTime(elapsed)?;
+                    writer.WriteSample(stream, &sample)?;
+                    if let (Some((_, audio)), Some(audio_stream)) = (&audio, audio_stream) {
+                        while audio_time < elapsed {
+                            let mut flags = 0;
+                            let mut timestamp = 0;
+                            let mut audio_sample = None;
+                            audio.ReadSample(
+                                MF_SOURCE_READER_FIRST_AUDIO_STREAM.0 as u32,
+                                0,
+                                None,
+                                Some(&mut flags),
+                                Some(&mut timestamp),
+                                Some(&mut audio_sample),
+                            )?;
+                            if flags & MF_SOURCE_READERF_ENDOFSTREAM.0 as u32 != 0 {
+                                break;
+                            }
+                            if let Some(audio_sample) = audio_sample {
+                                let start = *first_audio.get_or_insert(timestamp);
+                                audio_time = timestamp.saturating_sub(start);
+                                audio_sample.SetSampleTime(audio_time)?;
+                                if audio_sample.GetSampleDuration().unwrap_or(0) <= 0 {
+                                    let frames = i64::from(audio_sample.GetTotalLength()?) / 4;
+                                    if frames == 0 {
+                                        continue;
+                                    }
+                                    audio_sample.SetSampleDuration(frames * 10_000_000 / 48_000)?;
+                                }
+                                writer.WriteSample(audio_stream, &audio_sample)?;
+                            }
+                        }
+                    }
+                }
+            }
+            if first.is_none() {
+                return Err(windows::core::Error::empty());
+            }
+            writer.Finalize()?;
+            Ok(photo)
+        })();
+        if let Some((audio, _)) = audio {
+            let _ = audio.Shutdown();
+        }
+        let _ = source.Shutdown();
+        result
+    })();
+    let _ = (api.shutdown)();
+    if result.is_err() {
+        let _ = std::fs::remove_file(path);
+    }
+    result
+}
+
+unsafe fn save_jpeg(
+    sample: &windows::Win32::Media::MediaFoundation::IMFSample,
+    width: u32,
+    height: u32,
+    stride: u32,
+    path: &std::path::Path,
+) -> windows::core::Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows::core::{Error, PCWSTR};
+    use windows::Win32::Foundation::GENERIC_WRITE;
+    use windows::Win32::Graphics::Imaging::*;
+    use windows::Win32::System::Com::{CoCreateInstance, CLSCTX_INPROC_SERVER};
+
+    let buffer = sample.ConvertToContiguousBuffer()?;
+    let mut data = null_mut();
+    let mut length = 0;
+    buffer.Lock(&mut data, None, Some(&mut length))?;
+    let result = (|| {
+        let (w, h, s) = (width as usize, height as usize, stride as usize);
+        if data.is_null()
+            || w == 0
+            || h == 0
+            || w % 2 != 0
+            || h % 2 != 0
+            || s < w
+            || s.checked_mul(h + h / 2).is_none_or(|n| n > length as usize)
+        {
+            return Err(Error::empty());
+        }
+        let nv12 = std::slice::from_raw_parts(data, length as usize);
+        let size = w
+            .checked_mul(h)
+            .and_then(|n| n.checked_mul(3))
+            .ok_or_else(Error::empty)?;
+        let mut bgr = vec![0u8; size];
+        for y in 0..h {
+            for x in 0..w {
+                let luma = nv12[y * s + x] as i32 - 16;
+                let uv = s * h + (y / 2) * s + (x / 2) * 2;
+                let u = nv12[uv] as i32 - 128;
+                let v = nv12[uv + 1] as i32 - 128;
+                let base = (y * w + x) * 3;
+                bgr[base] = ((298 * luma + 516 * u + 128) >> 8).clamp(0, 255) as u8;
+                bgr[base + 1] = ((298 * luma - 100 * u - 208 * v + 128) >> 8).clamp(0, 255) as u8;
+                bgr[base + 2] = ((298 * luma + 409 * v + 128) >> 8).clamp(0, 255) as u8;
+            }
+        }
+        let factory: IWICImagingFactory =
+            CoCreateInstance(&CLSID_WICImagingFactory, None, CLSCTX_INPROC_SERVER)?;
+        let stream = factory.CreateStream()?;
+        let path: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
+        stream.InitializeFromFilename(PCWSTR(path.as_ptr()), GENERIC_WRITE.0)?;
+        let encoder = factory.CreateEncoder(&GUID_ContainerFormatJpeg, std::ptr::null())?;
+        encoder.Initialize(&stream, WICBitmapEncoderNoCache)?;
+        let mut frame = None;
+        encoder.CreateNewFrame(&mut frame, std::ptr::null_mut())?;
+        let frame = frame.ok_or_else(Error::empty)?;
+        frame.Initialize(None)?;
+        frame.SetSize(width, height)?;
+        let mut format = GUID_WICPixelFormat24bppBGR;
+        frame.SetPixelFormat(&mut format)?;
+        if format != GUID_WICPixelFormat24bppBGR {
+            return Err(Error::empty());
+        }
+        frame.WritePixels(height, width * 3, &bgr)?;
+        frame.Commit()?;
+        encoder.Commit()
+    })();
+    let _ = buffer.Unlock();
+    if result.is_err() {
+        let _ = std::fs::remove_file(path);
+    }
+    result
+}

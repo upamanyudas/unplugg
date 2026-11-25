@@ -5,6 +5,9 @@ use std::sync::{Arc, RwLock};
 use serde_json::{Map, Value};
 use windows_sys::Win32::Foundation::*;
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
+use windows_sys::Win32::System::Power::{RegisterPowerSettingNotification, UnregisterPowerSettingNotification, POWERBROADCAST_SETTING};
+use windows_sys::Win32::System::Shutdown::ShutdownBlockReasonCreate;
+use windows_sys::Win32::System::SystemServices::GUID_LIDSWITCH_STATE_CHANGE;
 use windows_sys::Win32::System::Threading::CreateMutexW;
 use windows_sys::Win32::UI::Shell::*;
 use windows_sys::Win32::UI::WindowsAndMessaging::*;
@@ -115,6 +118,25 @@ unsafe extern "system" fn window(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> 
             }
             0
         }
+        WM_POWERBROADCAST if w as u32 == PBT_POWERSETTINGCHANGE && l != 0 => {
+            let setting = &*(l as *const POWERBROADCAST_SETTING);
+            if setting.PowerSetting.data1 == GUID_LIDSWITCH_STATE_CHANGE.data1 && setting.PowerSetting.data2 == GUID_LIDSWITCH_STATE_CHANGE.data2 && setting.PowerSetting.data3 == GUID_LIDSWITCH_STATE_CHANGE.data3 && setting.PowerSetting.data4 == GUID_LIDSWITCH_STATE_CHANGE.data4 && setting.DataLength >= 4 {
+                let value = std::ptr::read_unaligned(setting.Data.as_ptr().cast::<u32>());
+                super::sensors::set_lid_closed(value == 0);
+            }
+            1
+        }
+        WM_POWERBROADCAST if w as u32 == PBT_APMSUSPEND => {
+            STATE.with(|s| if let Some(state) = s.borrow().as_ref() { state.monitor.trip("shutdown"); });
+            1
+        }
+        WM_QUERYENDSESSION => {
+            let armed = STATE.with(|s| if let Some(state) = s.borrow().as_ref() {
+                if state.config["activated"] == true { state.monitor.trip("shutdown"); return true; }
+                false
+            } else { false });
+            if armed { ShutdownBlockReasonCreate(hwnd, wide("unplugg is armed").as_ptr()); 0 } else { 1 }
+        }
         WM_DESTROY => {
             PostQuitMessage(0);
             0
@@ -194,6 +216,7 @@ pub fn run() {
         }
         let mut config = crate::config::load_config().unwrap_or_else(|_| crate::config::defaults());
         config["activated"] = false.into();
+        super::power::release(&mut config);
         let monitor_config = Arc::new(RwLock::new(MonitorConfig {
             monitor_power: true,
             monitor_lid: true,
@@ -224,11 +247,14 @@ pub fn run() {
                 icon: tray,
             })
         });
+        let power_hwnd = CreateWindowExW(0, class.as_ptr(), class.as_ptr(), 0, 0, 0, 0, 0, null_mut(), null_mut(), instance, null());
+        let notification = RegisterPowerSettingNotification(power_hwnd, &GUID_LIDSWITCH_STATE_CHANGE, DEVICE_NOTIFY_WINDOW_HANDLE);
         let mut msg = MSG::default();
         while GetMessageW(&mut msg, null_mut(), 0, 0) > 0 {
             TranslateMessage(&msg);
             DispatchMessageW(&msg);
         }
+        if notification != 0 { UnregisterPowerSettingNotification(notification); }
         CloseHandle(mutex);
     }
 }

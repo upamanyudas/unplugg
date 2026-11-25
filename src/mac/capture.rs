@@ -1,9 +1,6 @@
 use std::path::{Path, PathBuf};
 use std::ptr;
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    mpsc, Mutex,
-};
+use std::sync::{mpsc, Mutex};
 use std::time::Duration;
 
 use block2::RcBlock;
@@ -120,14 +117,11 @@ unsafe fn input(media: &NSString, name: &str) -> Option<Retained<AnyObject>> {
     result
 }
 
-pub fn capture(config: &Value, cancelled: &AtomicBool) -> (Option<PathBuf>, Option<PathBuf>) {
-    objc2::rc::autoreleasepool(|_| unsafe { capture_inner(config, cancelled) })
+pub fn capture(config: &Value) -> (Option<PathBuf>, Option<PathBuf>) {
+    objc2::rc::autoreleasepool(|_| unsafe { capture_inner(config) })
 }
 
-unsafe fn capture_inner(
-    config: &Value,
-    cancelled: &AtomicBool,
-) -> (Option<PathBuf>, Option<PathBuf>) {
+unsafe fn capture_inner(config: &Value) -> (Option<PathBuf>, Option<PathBuf>) {
     let dir = config
         .get("media_dir")
         .and_then(Value::as_str)
@@ -193,19 +187,8 @@ unsafe fn capture_inner(
         init
     ];
     let _: () = msg_send![&*output, startRecordingToOutputFileURL: &*url(&mov), recordingDelegate: &*delegate];
-    let deadline = std::time::Instant::now() + Duration::from_secs(25);
-    while !cancelled.load(Ordering::Relaxed) && std::time::Instant::now() < deadline {
-        if rx.recv_timeout(Duration::from_millis(100)).is_ok() {
-            break;
-        }
-    }
-    if cancelled.load(Ordering::Relaxed) {
-        let _: () = msg_send![&*output, stopRecording];
-    }
+    let _ = rx.recv_timeout(Duration::from_secs(25));
     let _: () = msg_send![&*session, stopRunning];
-    if cancelled.load(Ordering::Relaxed) {
-        return (None, None);
-    }
     if !mov.exists() {
         return (None, None);
     }

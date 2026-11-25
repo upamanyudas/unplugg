@@ -344,6 +344,32 @@ unsafe fn paint(hwnd: HWND) {
             dpi => dpi as i32,
         };
         let scale = |value: i32| (value * dpi + 48) / 96;
+        let fonts = [(40, 600), (19, 400), (16, 400)].map(|(size, weight)| {
+            let font = CreateFontW(
+                -scale(size),
+                0,
+                0,
+                0,
+                weight,
+                0,
+                0,
+                0,
+                DEFAULT_CHARSET as u32,
+                0,
+                0,
+                0,
+                0,
+                wide("Segoe UI").as_ptr(),
+            );
+            let old = SelectObject(dc, font);
+            let mut metrics = TEXTMETRICW::default();
+            GetTextMetricsW(dc, &mut metrics);
+            SelectObject(dc, old);
+            (font, metrics.tmHeight)
+        });
+        let spacing = scale(6);
+        let mut y = center
+            - (scale(160) + fonts.iter().map(|(_, height)| height).sum::<i32>() + 3 * spacing) / 2;
         let icon_data = include_bytes!("../../assets/win/cover.png");
         let icon = CreateIconFromResourceEx(
             icon_data.as_ptr(),
@@ -358,7 +384,7 @@ unsafe fn paint(hwnd: HWND) {
             DrawIconEx(
                 dc,
                 (rect.right - scale(160)) / 2,
-                center - scale(205),
+                y,
                 icon,
                 scale(160),
                 scale(160),
@@ -368,30 +394,16 @@ unsafe fn paint(hwnd: HWND) {
             );
             DestroyIcon(icon);
         }
-        let font = CreateFontW(
-            -scale(40),
-            0,
-            0,
-            0,
-            600,
-            0,
-            0,
-            0,
-            DEFAULT_CHARSET as u32,
-            0,
-            0,
-            0,
-            0,
-            wide("Segoe UI").as_ptr(),
-        );
+        y += scale(160) + spacing;
+        let font = fonts[0].0;
         let old = SelectObject(dc, font);
         SetTextColor(dc, 0x00ffffff);
         let mut title = wide("Protected by unplugg");
         let mut line = RECT {
             left: 0,
-            top: center - scale(40),
+            top: y,
             right: rect.right,
-            bottom: center + scale(12),
+            bottom: y + fonts[0].1,
         };
         DrawTextW(
             dc,
@@ -401,28 +413,13 @@ unsafe fn paint(hwnd: HWND) {
             DT_CENTER | DT_SINGLELINE | DT_VCENTER,
         );
         SelectObject(dc, old);
-        DeleteObject(font);
-        let font = CreateFontW(
-            -scale(19),
-            0,
-            0,
-            0,
-            400,
-            0,
-            0,
-            0,
-            DEFAULT_CHARSET as u32,
-            0,
-            0,
-            0,
-            0,
-            wide("Segoe UI").as_ptr(),
-        );
+        y = line.bottom + spacing;
+        let font = fonts[1].0;
         let old = SelectObject(dc, font);
         SetTextColor(dc, 0x00bbbbbb);
         let mut hint = wide("Press any key or move the mouse to unlock.");
-        line.top = center + scale(18);
-        line.bottom = center + scale(48);
+        line.top = y;
+        line.bottom = y + fonts[1].1;
         DrawTextW(
             dc,
             hint.as_mut_ptr(),
@@ -431,25 +428,10 @@ unsafe fn paint(hwnd: HWND) {
             DT_CENTER | DT_SINGLELINE | DT_VCENTER,
         );
         SelectObject(dc, old);
-        DeleteObject(font);
-        let font = CreateFontW(
-            -scale(16),
-            0,
-            0,
-            0,
-            400,
-            0,
-            0,
-            0,
-            DEFAULT_CHARSET as u32,
-            0,
-            0,
-            0,
-            0,
-            wide("Segoe UI").as_ptr(),
-        );
+        y = line.bottom + spacing;
+        let font = fonts[2].0;
         let old = SelectObject(dc, font);
-        let mut dot = wide("●  ");
+        let mut dot = wide("●");
         let mut badge = wide(if alarm { "Alarm triggered" } else { "Armed" });
         let mut dot_size = SIZE::default();
         let mut badge_size = SIZE::default();
@@ -485,10 +467,10 @@ unsafe fn paint(hwnd: HWND) {
                 | (fade((color >> 8) & 255, 18) << 8)
                 | (fade((color >> 16) & 255, 22) << 16),
         );
-        line.left = (rect.right - dot_size.cx - badge_size.cx) / 2;
+        line.left = (rect.right - dot_size.cx - spacing - badge_size.cx) / 2;
         line.right = line.left + dot_size.cx;
-        line.top = center + scale(52);
-        line.bottom = center + scale(82);
+        line.top = y;
+        line.bottom = y + fonts[2].1;
         DrawTextW(
             dc,
             dot.as_mut_ptr(),
@@ -496,8 +478,8 @@ unsafe fn paint(hwnd: HWND) {
             &mut line,
             DT_LEFT | DT_SINGLELINE | DT_VCENTER,
         );
-        line.left = line.right;
-        line.right += badge_size.cx;
+        line.left = line.right + spacing;
+        line.right = line.left + badge_size.cx;
         SetTextColor(dc, 0x00bbbbbb);
         DrawTextW(
             dc,
@@ -507,7 +489,9 @@ unsafe fn paint(hwnd: HWND) {
             DT_LEFT | DT_SINGLELINE | DT_VCENTER,
         );
         SelectObject(dc, old);
-        DeleteObject(font);
+        for (font, _) in fonts {
+            DeleteObject(font);
+        }
     }
     EndPaint(hwnd, &ps);
 }

@@ -116,3 +116,62 @@ pub fn set_speaker(name: &str) {
         }
     }
 }
+
+fn capture_devices(
+    media: &objc2_av_foundation::AVMediaType,
+) -> Vec<Retained<objc2_av_foundation::AVCaptureDevice>> {
+    #[allow(deprecated)]
+    unsafe {
+        objc2_av_foundation::AVCaptureDevice::devicesWithMediaType(media).to_vec()
+    }
+}
+
+fn names(media: Option<&objc2_av_foundation::AVMediaType>) -> Vec<String> {
+    media
+        .map(|media| {
+            capture_devices(media)
+                .iter()
+                .map(|device| unsafe { device.localizedName().to_string() })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+pub fn cameras() -> Vec<String> {
+    names(unsafe { objc2_av_foundation::AVMediaTypeVideo })
+}
+
+pub fn microphones() -> Vec<String> {
+    names(unsafe { objc2_av_foundation::AVMediaTypeAudio })
+}
+
+fn pick(media: Option<&objc2_av_foundation::AVMediaType>, name: &str) -> Option<String> {
+    let devices = capture_devices(media?);
+    let chosen = devices
+        .iter()
+        .find(|device| unsafe { device.localizedName().to_string() == name })
+        .or_else(|| {
+            devices.iter().find(|device| unsafe {
+                device.transportType() as u32 == u32::from_be_bytes(*b"bltn")
+            })
+        })
+        .or_else(|| devices.first())?;
+    Some(unsafe { chosen.localizedName().to_string() })
+}
+
+pub fn camera(name: &str) -> Option<String> {
+    pick(unsafe { objc2_av_foundation::AVMediaTypeVideo }, name)
+}
+
+pub fn microphone(name: &str) -> Option<String> {
+    pick(unsafe { objc2_av_foundation::AVMediaTypeAudio }, name)
+}
+
+pub fn device(
+    media: &objc2_av_foundation::AVMediaType,
+    name: &str,
+) -> Option<Retained<objc2_av_foundation::AVCaptureDevice>> {
+    capture_devices(media)
+        .into_iter()
+        .find(|device| unsafe { device.localizedName().to_string() == name })
+}

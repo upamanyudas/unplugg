@@ -1,120 +1,115 @@
-name: Build Windows and Linux
+name: Build unplugg
 
-# On every push and pull request: build the Windows and Linux packages, x64 and
-# ARM64, so a packaging break shows up before a release. Each run keeps them as
-# artifacts. Release unplugg calls this too, with the version to stamp.
+# On every push and pull request: build every download, so a packaging break
+# shows up before a release. Each run keeps them as artifacts. Release unplugg
+# calls this too, with the version to stamp.
 #
-# Fixed names, like the dmgs: the updater, the cask and Scoop find them by name.
-# Not signed: SmartScreen asks once (More info › Run anyway), like Open Anyway.
+# Fixed names: the updater, the cask and Scoop find them by name.
+# Windows isn't signed: SmartScreen asks once (More info › Run anyway), like Open Anyway.
 on:
   push:
     branches: ["**"]  # not tags: a release builds its own
   pull_request:
   workflow_call:
     inputs:
-      current:
-        type: string
       version:
         type: string
 
 jobs:
+  # one universal app for Apple Silicon and Intel. If the UNPLUGG_CERT_P12 secret
+  # holds the "unplugg cert" certificate, build.sh signs with it, so camera, mic
+  # and location grants survive updates.
+  mac:
+    runs-on: macos-26
+    env:  # a step's `if:` can't read secrets, but it can read env
+      CERT_P12: ${{ secrets.UNPLUGG_CERT_P12 }}
+      CERT_PASSWORD: ${{ secrets.UNPLUGG_CERT_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Import the signing certificate
+        if: env.CERT_P12 != ''
+        run: |
+          KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
+          echo "$CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p ci "$KEYCHAIN"
+          security unlock-keychain -p ci "$KEYCHAIN"
+          security import "$RUNNER_TEMP/cert.p12" -P "$CERT_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN"
+          security set-key-partition-list -S apple-tool:,apple: -k ci "$KEYCHAIN"
+          security list-keychain -d user -s "$KEYCHAIN"
+      - name: Stamp version
+        if: inputs.version != ''
+        run: sed -i '' -E '1,/^version = /s/^version = ".*"/version = "${{ inputs.version }}"/' Cargo.toml
+      - name: Build
+        run: |
+          rustup target add aarch64-apple-darwin x86_64-apple-darwin
+          packaging/mac/build.sh
+          cd dist
+          shasum -a 256 unplugg.dmg > unplugg.dmg.sha256  # the updater and the cask check it
+      - uses: actions/upload-artifact@v7
+        with:
+          name: unplugg-mac
+          path: dist/unplugg.dmg*
+
+  # x64 and arm64 from one x64 runner: its Visual Studio has the ARM64 tools
   windows:
-    strategy:
-      matrix:
-        include:
-          - runner: windows-latest
-            arch: x64
-          - runner: windows-11-arm  # Snapdragon and other ARM laptops
-            arch: arm64
-    runs-on: ${{ matrix.runner }}
+    runs-on: windows-latest
     defaults:
       run:
         shell: bash
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.13"
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
       - name: Stamp version
         if: inputs.version != ''
-        run: sed -i 's/"${{ inputs.current }}"/"${{ inputs.version }}"/' unplugg/__init__.py
-      - name: Build
-        run: python packaging/build.py
-      - name: Installer and zip
-        env:
-          ARCH: ${{ matrix.arch }}
+        run: sed -i -E '1,/^version = /s/^version = ".*"/version = "${{ inputs.version }}"/' Cargo.toml
+      - name: Build, installer and zip
         run: |
-          VERSION=$(sed -n 's/^__version__ = "\([^"]*\)".*/\1/p' unplugg/__init__.py)
-          curl -sSLo is.exe https://github.com/jrsoftware/issrc/releases/download/is-6_7_4/innosetup-6.7.4.exe
-          ./is.exe //VERYSILENT //SUPPRESSMSGBOXES //NORESTART //ALLUSERS
-          # -D, not /D: bash on Windows rewrites /D… as a path
-          "/c/Program Files (x86)/Inno Setup 6/ISCC.exe" "-DAppVersion=$VERSION" "-DArch=$ARCH" packaging/windows/unplugg.iss
-          # one unplugg folder inside, Scoop's extract_dir
-          pwsh -Command "Compress-Archive -Path dist/unplugg -DestinationPath dist/unplugg-windows-$ARCH.zip"
+          VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1)
+          [ -x "C:/Program Files (x86)/NSIS/makensis.exe" ] || choco install nsis -y --no-progress
+          mkdir -p dist
+          for ARCH in x64 arm64; do
+            TARGET=$([ $ARCH = x64 ] && echo x86_64 || echo aarch64)-pc-windows-msvc
+            rustup target add $TARGET
+            cargo build --release --target $TARGET
+            "C:/Program Files (x86)/NSIS/makensis.exe" -V2 -DAppVersion=$VERSION -DArch=$ARCH packaging/windows/unplugg.nsi
+            # one unplugg folder inside, Scoop's extract_dir
+            mkdir -p zip-$ARCH/unplugg
+            cp target/$TARGET/release/unplugg.exe zip-$ARCH/unplugg/
+            pwsh -Command "Compress-Archive -Path zip-$ARCH/unplugg -DestinationPath dist/unplugg-windows-$ARCH.zip"
+          done
           cd dist
-          for f in unplugg-windows-$ARCH-setup.exe unplugg-windows-$ARCH.zip; do sha256sum "$f" > "$f.sha256"; done
+          for f in unplugg-windows-*; do sha256sum "$f" > "$f.sha256"; done
       - uses: actions/upload-artifact@v7
         with:
-          name: unplugg-windows-${{ matrix.arch }}
-          path: dist/unplugg-windows-${{ matrix.arch }}*
+          name: unplugg-windows
+          path: dist/unplugg-windows-*
 
-  # each runner's glibc is the floor: x86_64 needs 2.35+ (Ubuntu 22.04, Debian 12,
-  # Fedora 36), ARM64 needs 2.39+ (Ubuntu 24.04), as Qt's ARM wheel does
+  # Ubuntu 22.04 on both: glibc 2.35 is the floor (Debian 12, Fedora 36 and later)
   linux:
     strategy:
       matrix:
         include:
           - runner: ubuntu-22.04
-            arch: x86_64   # the cask's names, like the dmgs
-            tool: x86_64   # appimagetool's
-            goarch: amd64  # nfpm's and the .deb's
-          - runner: ubuntu-24.04-arm
-            arch: arm64
-            tool: aarch64
-            goarch: arm64
+            nfpm: x86_64
+          - runner: ubuntu-22.04-arm
+            nfpm: arm64
     runs-on: ${{ matrix.runner }}
-    env:
-      ARCH: ${{ matrix.arch }}
-      GOARCH: ${{ matrix.goarch }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.13"
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
       - name: Stamp version
         if: inputs.version != ''
-        run: sed -i 's/"${{ inputs.current }}"/"${{ inputs.version }}"/' unplugg/__init__.py
+        run: sed -i -E '1,/^version = /s/^version = ".*"/version = "${{ inputs.version }}"/' Cargo.toml
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential pkg-config nasm libgtk-3-dev libssl-dev libclang-dev meson ninja-build squashfs-tools file
+          command -v cargo || { curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal; echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"; }
+          curl -sSL https://github.com/goreleaser/nfpm/releases/download/v2.48.0/nfpm_2.48.0_Linux_${{ matrix.nfpm }}.tar.gz | sudo tar xz -C /usr/local/bin nfpm
       - name: Build
-        run: python packaging/build.py
-      - name: AppImage
         run: |
-          mkdir AppDir
-          cp -r dist/unplugg AppDir/
-          cp packaging/linux/unplugg.desktop AppDir/
-          cp assets/logo.png AppDir/unplugg.png
-          install -m 755 packaging/linux/AppRun AppDir/AppRun
-          curl -sSLo appimagetool https://github.com/AppImage/appimagetool/releases/download/1.9.1/appimagetool-${{ matrix.tool }}.AppImage
-          chmod +x appimagetool
-          ARCH=${{ matrix.tool }} ./appimagetool --appimage-extract-and-run AppDir \
-            dist/unplugg-linux-${{ matrix.arch }}.AppImage
-      - name: .deb and .rpm
-        run: |
-          export VERSION=$(sed -n 's/^__version__ = "\([^"]*\)".*/\1/p' unplugg/__init__.py)
-          NFPM=$([ "$GOARCH" = amd64 ] && echo x86_64 || echo arm64)
-          curl -sSL https://github.com/goreleaser/nfpm/releases/download/v2.48.0/nfpm_2.48.0_Linux_$NFPM.tar.gz | tar xz nfpm
-          ./nfpm package -f packaging/linux/nfpm.yaml -p deb -t dist/unplugg-linux-$GOARCH.deb
-          ./nfpm package -f packaging/linux/nfpm.yaml -p rpm -t dist/unplugg-linux-$ARCH.rpm
+          packaging/linux/build.sh
           cd dist
           for f in unplugg-linux-*; do sha256sum "$f" > "$f.sha256"; done
       - uses: actions/upload-artifact@v7
         with:
-          name: unplugg-linux-${{ matrix.arch }}
+          name: unplugg-linux-${{ matrix.nfpm }}
           path: dist/unplugg-linux-*

@@ -34,5 +34,9 @@ codesign --force --sign "$IDENTITY" "$APP"
 mkdir dist/dmg
 ditto "$APP" dist/dmg/unplugg.app
 ln -s /Applications dist/dmg/Applications
-hdiutil create -volname unplugg -srcfolder dist/dmg -fs HFS+ -format ULMO dist/unplugg.dmg
+for try in 1 2 3; do  # hdiutil on hosted runners sometimes says "Resource busy"
+    hdiutil create -volname unplugg -srcfolder dist/dmg -fs HFS+ -format ULMO dist/unplugg.dmg && break
+    [ $try = 3 ] && exit 1
+    sleep 5
+done
 rm -rf dist/dmg

@@ -9,7 +9,8 @@ cask "unplugg" do
          x86_64_linux: "8ec512eb67bed8706cf14a3c26102a43821c83f5cc60bcce74c2f569ea26fa09"
 
   on_macos do
-    url "https://github.com/upamanyudas/unplugg/releases/download/v#{version}/unplugg-#{arch}.dmg"
+    # one universal dmg; arm and intel above carry its one sha256
+    url "https://github.com/upamanyudas/unplugg/releases/download/v#{version}/unplugg.dmg"
   end
   on_linux do
     url "https://github.com/upamanyudas/unplugg/releases/download/v#{version}/unplugg-linux-#{arch}.AppImage"

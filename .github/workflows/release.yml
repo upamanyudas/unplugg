@@ -1,30 +1,21 @@
 name: Release unplugg
 
 # Admin-initiated: run from the Actions tab, pick a bump or type a version.
-# Builds the .app on Apple Silicon and Intel runners, the Windows installer and
-# zip, and the Linux AppImage, .deb and .rpm. Only once all pass does it commit
-# the version to unplugg/__init__.py, the cask and the Scoop manifest, tag it
-# and publish them all.
-#
-# ponytail: per-arch builds instead of a single "universal2" binary. hidapi (the
-# lid-angle sensor's dependency) ships no universal2 wheel, so a universal2
-# py2app build would mean compiling it for both archs by hand. Two native builds
-# work. Revisit if hidapi gains a universal2 wheel.
+# Builds every download (build.yml). Only once all pass does it commit the
+# version to Cargo.toml, the cask and the Scoop manifest, tag it and publish.
 #
 # No Apple Developer ID ($99/yr), so the app isn't notarized: people open it once
-# via System Settings › Privacy & Security › Open Anyway. If the UNPLUGG_CERT_P12
-# secret holds the "unplugg cert" certificate, setup.py signs with it, so every
-# release keeps one identity and camera, mic and location grants survive updates.
+# via System Settings › Privacy & Security › Open Anyway.
 on:
   workflow_dispatch:
     inputs:
       bump:
-        description: "Bump the version in unplugg/__init__.py"
+        description: "Bump the version in Cargo.toml"
         type: choice
         options: [patch, minor, major]
         default: patch
       version:
-        description: "Or an exact version, e.g. 1.0.0 (overrides the bump)"
+        description: "Or an exact version, e.g. 2.0.0 (overrides the bump)"
         required: false
 
 permissions:
@@ -43,7 +34,7 @@ jobs:
           BUMP: ${{ inputs.bump }}
           EXACT: ${{ inputs.version }}
         run: |
-          CURRENT=$(sed -n 's/^__version__ = "\([^"]*\)".*/\1/p' unplugg/__init__.py)
+          CURRENT=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1)
           IFS=. read -r MAJOR MINOR PATCH <<< "$CURRENT"
           case "$BUMP" in
             major) NEXT="$((MAJOR + 1)).0.0" ;;
@@ -64,70 +55,13 @@ jobs:
 
   build:
     needs: version
-    strategy:
-      matrix:
-        include:
-          - runner: macos-26        # Apple Silicon (arm64)
-            arch: arm64
-          - runner: macos-26-intel  # Intel (x86_64)
-            arch: x86_64
-    runs-on: ${{ matrix.runner }}
-    env:  # a step's `if:` can't read secrets, but it can read env
-      CERT_P12: ${{ secrets.UNPLUGG_CERT_P12 }}
-      CERT_PASSWORD: ${{ secrets.UNPLUGG_CERT_PASSWORD }}
-      CURRENT: ${{ needs.version.outputs.current }}
-      VERSION: ${{ needs.version.outputs.version }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-      - name: Import the signing certificate
-        if: env.CERT_P12 != ''
-        run: |
-          KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
-          echo "$CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
-          security create-keychain -p ci "$KEYCHAIN"
-          security unlock-keychain -p ci "$KEYCHAIN"
-          security import "$RUNNER_TEMP/cert.p12" -P "$CERT_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN"
-          security set-key-partition-list -S apple-tool:,apple: -k ci "$KEYCHAIN"
-          security list-keychain -d user -s "$KEYCHAIN"
-      - name: Stamp version
-        run: sed -i '' "s/\"$CURRENT\"/\"$VERSION\"/" unplugg/__init__.py
-      - name: Build .app
-        run: python setup.py py2app
-      # a fixed name per arch: the in-app updater picks this Mac's dmg by it
-      - name: Disk image
-        run: |
-          mkdir dmg
-          ditto dist/unplugg.app dmg/unplugg.app
-          ln -s /Applications dmg/Applications  # drag the app onto it to install
-          DMG="unplugg-${{ matrix.arch }}.dmg"
-          for try in 1 2 3; do  # hdiutil on hosted runners sometimes says "Resource busy"
-            hdiutil create -volname unplugg -srcfolder dmg -format UDZO "dist/$DMG" && break
-            sleep 5
-          done
-          cd dist
-          shasum -a 256 "$DMG" > "$DMG.sha256"  # the updater and the cask check it
-      - uses: actions/upload-artifact@v7
-        with:
-          name: unplugg-${{ matrix.arch }}
-          path: dist/unplugg-${{ matrix.arch }}.dmg*
-
-  # the installer, zip, AppImage, .deb and .rpm, stamped with this version
-  pc:
-    needs: version
     uses: ./.github/workflows/build.yml
+    secrets: inherit  # the mac signing certificate
     with:
-      current: ${{ needs.version.outputs.current }}
       version: ${{ needs.version.outputs.version }}
 
   publish:
-    needs: [version, build, pc]
+    needs: [version, build]
     runs-on: ubuntu-latest
     env:
       CURRENT: ${{ needs.version.outputs.current }}
@@ -138,12 +72,23 @@ jobs:
         with:
           path: dist
           merge-multiple: true
+      # 1.x's updater looks for the dmg of its own chip; the universal one serves both
+      - name: The dmg under 1.x's names
+        run: |
+          cd dist
+          for arch in arm64 x86_64; do
+            cp unplugg.dmg "unplugg-$arch.dmg"
+            sha256sum "unplugg-$arch.dmg" > "unplugg-$arch.dmg.sha256"
+          done
       - name: Commit the version, the cask and the Scoop manifest
         run: |
           hash() { cut -d ' ' -f 1 "dist/unplugg-$1.sha256"; }
-          sed -i "s/\"$CURRENT\"/\"$VERSION\"/" unplugg/__init__.py Casks/unplugg.rb
-          sed -i -E "s/(arm: +)\"[0-9a-f]{64}\"/\1\"$(hash arm64.dmg)\"/
-                     s/(intel: +)\"[0-9a-f]{64}\"/\1\"$(hash x86_64.dmg)\"/
+          MAC=$(cut -d ' ' -f 1 dist/unplugg.dmg.sha256)
+          sed -i -E "1,/^version = /s/^version = \".*\"/version = \"$VERSION\"/" Cargo.toml
+          sed -i "/^name = \"unplugg\"$/{n;s/^version = \".*\"/version = \"$VERSION\"/}" Cargo.lock
+          sed -i "s/\"$CURRENT\"/\"$VERSION\"/" Casks/unplugg.rb
+          sed -i -E "s/(arm: +)\"[0-9a-f]{64}\"/\1\"$MAC\"/
+                     s/(intel: +)\"[0-9a-f]{64}\"/\1\"$MAC\"/
                      s/(arm64_linux: +)\"[0-9a-f]{64}\"/\1\"$(hash linux-arm64.AppImage)\"/
                      s/(x86_64_linux: +)\"[0-9a-f]{64}\"/\1\"$(hash linux-x86_64.AppImage)\"/" Casks/unplugg.rb
           jq --arg v "$VERSION" --arg x64 "$(hash windows-x64.zip)" --arg arm64 "$(hash windows-arm64.zip)" '
@@ -160,5 +105,5 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ env.VERSION }}
-          files: dist/unplugg-*
+          files: dist/unplugg*
           generate_release_notes: true

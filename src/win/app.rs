@@ -47,10 +47,12 @@ fn wide(s: &str) -> Vec<u16> {
 }
 
 unsafe fn icon(state: &str) -> HICON {
-    let bytes: &[u8] = match state {
-        "armed" => include_bytes!("../../assets/win/armed_dark.png"),
-        "alarm" => include_bytes!("../../assets/win/alarm_dark.png"),
-        _ => include_bytes!("../../assets/win/idle_dark.png"),
+    let bytes: &[u8] = match (state, super::utils::light_taskbar()) {
+        ("armed", true) => include_bytes!("../../assets/win/armed_light.png"),
+        ("armed", false) => include_bytes!("../../assets/win/armed_dark.png"),
+        ("alarm", _) => include_bytes!("../../assets/win/alarm_dark.png"),
+        (_, true) => include_bytes!("../../assets/win/idle_light.png"),
+        (_, false) => include_bytes!("../../assets/win/idle_dark.png"),
     };
     CreateIconFromResourceEx(bytes.as_ptr(), bytes.len() as u32, 1, 0x00030000, 16, 16, 0)
 }

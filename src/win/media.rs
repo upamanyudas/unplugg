@@ -116,22 +116,24 @@ unsafe fn video_source(
     use windows::core::{Interface, PCWSTR};
     use windows::Win32::Media::MediaFoundation::*;
 
-    let attributes = attributes(api)?;
-    attributes.SetGUID(
+    let device_attrs = attributes(api)?;
+    device_attrs.SetGUID(
         &MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE,
         &MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_GUID,
     )?;
     let camera: Vec<u16> = camera.encode_utf16().chain(Some(0)).collect();
-    attributes.SetString(
+    device_attrs.SetString(
         &MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_SYMBOLIC_LINK,
         PCWSTR(camera.as_ptr()),
     )?;
     let mut source = None;
-    (api.device_source)(attributes.as_raw(), &mut source).ok()?;
+    (api.device_source)(device_attrs.as_raw(), &mut source).ok()?;
     let source = source.ok_or_else(windows::core::Error::empty)?;
     let result = (|| {
+        let options = attributes(api)?;
+        options.SetUINT32(&MF_SOURCE_READER_ENABLE_ADVANCED_VIDEO_PROCESSING, 1)?;
         let mut reader = None;
-        (api.source_reader)(source.as_raw(), null_mut(), &mut reader).ok()?;
+        (api.source_reader)(source.as_raw(), options.as_raw(), &mut reader).ok()?;
         let reader = reader.ok_or_else(windows::core::Error::empty)?;
         let format = media_type(api)?;
         format.SetGUID(&MF_MT_MAJOR_TYPE, &MFMediaType_Video)?;
@@ -174,14 +176,21 @@ unsafe fn audio_source(
         let mut reader = None;
         (api.source_reader)(source.as_raw(), null_mut(), &mut reader).ok()?;
         let reader = reader.ok_or_else(windows::core::Error::empty)?;
-        let format = media_type(api)?;
-        format.SetGUID(&MF_MT_MAJOR_TYPE, &MFMediaType_Audio)?;
-        format.SetGUID(&MF_MT_SUBTYPE, &MFAudioFormat_PCM)?;
-        format.SetUINT32(&MF_MT_AUDIO_BITS_PER_SAMPLE, 16)?;
-        format.SetUINT32(&MF_MT_AUDIO_NUM_CHANNELS, 2)?;
-        format.SetUINT32(&MF_MT_AUDIO_SAMPLES_PER_SECOND, 48_000)?;
-        reader.SetCurrentMediaType(MF_SOURCE_READER_FIRST_AUDIO_STREAM.0 as u32, None, &format)?;
-        Ok(reader)
+        for (rate, channels) in [(48_000, 2), (44_100, 2), (48_000, 1), (44_100, 1)] {
+            let format = media_type(api)?;
+            format.SetGUID(&MF_MT_MAJOR_TYPE, &MFMediaType_Audio)?;
+            format.SetGUID(&MF_MT_SUBTYPE, &MFAudioFormat_PCM)?;
+            format.SetUINT32(&MF_MT_AUDIO_BITS_PER_SAMPLE, 16)?;
+            format.SetUINT32(&MF_MT_AUDIO_NUM_CHANNELS, channels)?;
+            format.SetUINT32(&MF_MT_AUDIO_SAMPLES_PER_SECOND, rate)?;
+            if reader
+                .SetCurrentMediaType(MF_SOURCE_READER_FIRST_AUDIO_STREAM.0 as u32, None, &format)
+                .is_ok()
+            {
+                return Ok(reader);
+            }
+        }
+        Err(windows::core::Error::empty())
     })();
     if result.is_err() {
         let _ = source.Shutdown();
@@ -224,8 +233,14 @@ unsafe fn video_writer(
         output.SetGUID(&MF_MT_MAJOR_TYPE, &MFMediaType_Audio)?;
         output.SetGUID(&MF_MT_SUBTYPE, &MFAudioFormat_AAC)?;
         output.SetUINT32(&MF_MT_AUDIO_BITS_PER_SAMPLE, 16)?;
-        output.SetUINT32(&MF_MT_AUDIO_NUM_CHANNELS, 2)?;
-        output.SetUINT32(&MF_MT_AUDIO_SAMPLES_PER_SECOND, 48_000)?;
+        output.SetUINT32(
+            &MF_MT_AUDIO_NUM_CHANNELS,
+            input.GetUINT32(&MF_MT_AUDIO_NUM_CHANNELS)?,
+        )?;
+        output.SetUINT32(
+            &MF_MT_AUDIO_SAMPLES_PER_SECOND,
+            input.GetUINT32(&MF_MT_AUDIO_SAMPLES_PER_SECOND)?,
+        )?;
         output.SetUINT32(&MF_MT_AUDIO_AVG_BYTES_PER_SECOND, 12_000)?;
         let stream = writer.AddStream(&output)?;
         writer.SetInputMediaType(stream, &input, None)?;
@@ -242,6 +257,7 @@ pub unsafe fn record_video(
     camera: &str,
     microphone: Option<&str>,
     path: &std::path::Path,
+    last_photo: &std::sync::Mutex<Option<std::path::PathBuf>>,
 ) -> (Option<std::path::PathBuf>, bool) {
     use std::time::{Duration, Instant};
     use windows::Win32::Media::MediaFoundation::*;
@@ -268,6 +284,17 @@ pub unsafe fn record_video(
             };
             let mut first_audio = None;
             let mut audio_time = -1;
+            let mut audio_ended = false;
+            let mut audio_discontinuity = false;
+            let audio_format = audio.as_ref().and_then(|(_, reader)| {
+                let format = reader
+                    .GetCurrentMediaType(MF_SOURCE_READER_FIRST_AUDIO_STREAM.0 as u32)
+                    .ok()?;
+                Some((
+                    format.GetUINT32(&MF_MT_AUDIO_NUM_CHANNELS).ok()?,
+                    format.GetUINT32(&MF_MT_AUDIO_SAMPLES_PER_SECOND).ok()?,
+                ))
+            });
             let format =
                 reader.GetCurrentMediaType(MF_SOURCE_READER_FIRST_VIDEO_STREAM.0 as u32)?;
             let size = format.GetUINT64(&MF_MT_FRAME_SIZE)?;
@@ -290,7 +317,11 @@ pub unsafe fn record_video(
                     Some(&mut timestamp),
                     Some(&mut sample),
                 )?;
-                if flags & MF_SOURCE_READERF_ERROR.0 as u32 != 0 {
+                if flags
+                    & (MF_SOURCE_READERF_ERROR.0 | MF_SOURCE_READERF_CURRENTMEDIATYPECHANGED.0)
+                        as u32
+                    != 0
+                {
                     return Err(windows::core::Error::empty());
                 }
                 if flags & MF_SOURCE_READERF_ENDOFSTREAM.0 as u32 != 0 {
@@ -302,7 +333,8 @@ pub unsafe fn record_video(
                     if next_photo <= 3 && elapsed >= next_photo * 10_000_000 {
                         let image = path.with_file_name(format!("{stem}_{next_photo}.jpg"));
                         if save_jpeg(&sample, width, height, stride, &image).is_ok() {
-                            photo = Some(image);
+                            photo = Some(image.clone());
+                            *last_photo.lock().unwrap() = Some(image);
                         }
                         next_photo += 1;
                     }
@@ -312,6 +344,9 @@ pub unsafe fn record_video(
                     sample.SetSampleTime(elapsed)?;
                     writer.WriteSample(stream, &sample)?;
                     if let (Some((_, audio)), Some(audio_stream)) = (&audio, audio_stream) {
+                        if audio_ended {
+                            continue;
+                        }
                         while audio_time < elapsed {
                             let mut flags = 0;
                             let mut timestamp = 0;
@@ -324,19 +359,42 @@ pub unsafe fn record_video(
                                 Some(&mut timestamp),
                                 Some(&mut audio_sample),
                             )?;
+                            if flags
+                                & (MF_SOURCE_READERF_ERROR.0
+                                    | MF_SOURCE_READERF_CURRENTMEDIATYPECHANGED.0)
+                                    as u32
+                                != 0
+                            {
+                                return Err(windows::core::Error::empty());
+                            }
                             if flags & MF_SOURCE_READERF_ENDOFSTREAM.0 as u32 != 0 {
+                                audio_ended = true;
                                 break;
+                            }
+                            if flags & MF_SOURCE_READERF_STREAMTICK.0 as u32 != 0 {
+                                let start = *first_audio.get_or_insert(timestamp);
+                                audio_time = timestamp.saturating_sub(start);
+                                writer.SendStreamTick(audio_stream, audio_time)?;
+                                audio_discontinuity = true;
                             }
                             if let Some(audio_sample) = audio_sample {
                                 let start = *first_audio.get_or_insert(timestamp);
                                 audio_time = timestamp.saturating_sub(start);
                                 audio_sample.SetSampleTime(audio_time)?;
+                                if audio_discontinuity {
+                                    audio_sample.SetUINT32(&MFSampleExtension_Discontinuity, 1)?;
+                                    audio_discontinuity = false;
+                                }
                                 if audio_sample.GetSampleDuration().unwrap_or(0) <= 0 {
-                                    let frames = i64::from(audio_sample.GetTotalLength()?) / 4;
+                                    let (channels, rate) =
+                                        audio_format.ok_or_else(windows::core::Error::empty)?;
+                                    let frames = i64::from(audio_sample.GetTotalLength()?)
+                                        / (i64::from(channels) * 2);
                                     if frames == 0 {
                                         continue;
                                     }
-                                    audio_sample.SetSampleDuration(frames * 10_000_000 / 48_000)?;
+                                    audio_sample
+                                        .SetSampleDuration(frames * 10_000_000 / i64::from(rate))?;
                                 }
                                 writer.WriteSample(audio_stream, &audio_sample)?;
                             }

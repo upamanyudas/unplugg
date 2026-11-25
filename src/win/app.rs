@@ -285,10 +285,14 @@ fn alarm(reason: String, config: Map<String, Value>) {
     if config["lock_device"] == true {
         super::utils::lock_screen();
     }
-    let document = if config["capture_media"] == true {
-        super::capture::capture(&config)
+    let media = if config["capture_media"] == true {
+        super::capture::capture_full(&config)
     } else {
-        None
+        super::capture::Captured {
+            photo: None,
+            video: None,
+            document: None,
+        }
     };
     let link = if config["send_location"] == true {
         super::location::maps_link(Duration::from_secs(8))
@@ -298,10 +302,10 @@ fn alarm(reason: String, config: Map<String, Value>) {
     crate::telegram::send_alert_with_document(
         &reason,
         &config,
-        None,
-        None,
+        media.photo.as_deref(),
+        media.video.as_deref(),
         link.as_deref(),
-        document.as_deref(),
+        media.document.as_deref(),
     );
 }
 

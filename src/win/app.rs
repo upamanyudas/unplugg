@@ -125,6 +125,11 @@ unsafe extern "system" fn window(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> 
                                 super::location::Source::start(move |fix| updates.update(fix));
                             state.tracking = Some((source, tracker));
                         }
+                        if event.1["play_sound"] == true && state.siren.is_none() {
+                            state.siren = Some(super::siren::Siren::start(
+                                event.1["speaker_name"].as_str().unwrap_or(""),
+                            ));
+                        }
                         if event.1["show_overlay"] == true || event.1["flash_screen"] == true {
                             super::overlay::show(
                                 hwnd,
@@ -132,11 +137,6 @@ unsafe extern "system" fn window(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> 
                                 true,
                                 event.1["flash_screen"] == true,
                             );
-                        }
-                        if event.1["play_sound"] == true && state.siren.is_none() {
-                            state.siren = Some(super::siren::Siren::start(
-                                event.1["speaker_name"].as_str().unwrap_or(""),
-                            ));
                         }
                     }
                 }

@@ -9,7 +9,7 @@ use windows::Win32::System::WinRT::{RoInitialize, RoUninitialize, RO_INIT_MULTIT
 
 use crate::live::Fix;
 
-fn fix(position: &Geoposition, fresh_only: bool) -> Option<Fix> {
+fn fix(position: &Geoposition) -> Option<Fix> {
     let coordinate = position.Coordinate().ok()?;
     let point = coordinate.Point().ok()?.Position().ok()?;
     let accuracy = coordinate.Accuracy().ok()?;
@@ -17,12 +17,11 @@ fn fix(position: &Geoposition, fresh_only: bool) -> Option<Fix> {
     let now = SystemTime::now().duration_since(UNIX_EPOCH).ok()?;
     let now_ticks = i128::try_from(now.as_nanos() / 100).ok()? + 116_444_736_000_000_000;
     let age_ticks = now_ticks - i128::from(timestamp);
-    if fresh_only
-        && (!(0..=600_000_000).contains(&age_ticks)
-            || !accuracy.is_finite()
-            || accuracy < 0.0
-            || !(-90.0..=90.0).contains(&point.Latitude)
-            || !(-180.0..=180.0).contains(&point.Longitude))
+    if !(0..=600_000_000).contains(&age_ticks)
+        || !accuracy.is_finite()
+        || accuracy < 0.0
+        || !(-90.0..=90.0).contains(&point.Latitude)
+        || !(-180.0..=180.0).contains(&point.Longitude)
     {
         return None;
     }
@@ -53,7 +52,7 @@ impl Source {
                         if let Some(fix) = args
                             .as_ref()
                             .and_then(|args| args.Position().ok())
-                            .and_then(|position| fix(&position, true))
+                            .and_then(|position| fix(&position))
                         {
                             callback(fix);
                         }
@@ -98,10 +97,23 @@ pub fn maps_link(timeout: Duration) -> Option<String> {
             let _ = operation.Cancel();
             return None;
         }
-        let fix = fix(&operation.GetResults().ok()?, false)?;
+        let position = operation
+            .GetResults()
+            .ok()?
+            .Coordinate()
+            .ok()?
+            .Point()
+            .ok()?
+            .Position()
+            .ok()?;
+        if !(-90.0..=90.0).contains(&position.Latitude)
+            || !(-180.0..=180.0).contains(&position.Longitude)
+        {
+            return None;
+        }
         Some(format!(
             "https://maps.google.com/?q={:.6},{:.6}",
-            fix.latitude, fix.longitude
+            position.Latitude, position.Longitude
         ))
     })();
     unsafe { RoUninitialize() };

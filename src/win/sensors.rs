@@ -19,7 +19,7 @@ fn power_status() -> Option<SYSTEM_POWER_STATUS> {
 }
 
 pub fn is_laptop() -> bool {
-    power_status().is_some_and(|status| status.BatteryFlag != 128 && status.BatteryFlag != 255)
+    power_status().is_some_and(|status| status.BatteryFlag & 128 == 0)
 }
 
 pub fn has_angle_sensor() -> bool {
@@ -46,9 +46,8 @@ pub struct WinSensors;
 
 impl Sensors for WinSensors {
     fn is_plugged_in(&self) -> bool {
-        power_status().is_none_or(|status| {
-            status.BatteryFlag == 128 || status.BatteryFlag == 255 || status.ACLineStatus != 0
-        })
+        power_status()
+            .is_none_or(|status| status.BatteryFlag & 128 != 0 || status.ACLineStatus == 1)
     }
 
     fn is_lid_closed(&self) -> bool {

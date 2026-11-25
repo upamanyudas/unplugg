@@ -11,7 +11,7 @@ use objc2_app_kit::{
     NSAlert, NSApplication, NSApplicationDelegate, NSApplicationTerminateReply, NSImage, NSMenu,
     NSMenuItem, NSStatusBar, NSStatusItem, NSVariableStatusItemLength,
 };
-use objc2_foundation::{NSProcessInfo, NSString, NSTimer};
+use objc2_foundation::{NSActivityOptions, NSProcessInfo, NSString, NSTimer};
 use serde_json::{Map, Value};
 
 use super::{auth, sensors, utils};
@@ -24,6 +24,7 @@ struct State {
     events: mpsc::Receiver<String>,
     item: Retained<NSStatusItem>,
     toggle: Retained<NSMenuItem>,
+    awake: Option<Retained<ProtocolObject<dyn NSObjectProtocol>>>,
 }
 
 struct AppIvars(RefCell<Option<State>>);
@@ -77,6 +78,8 @@ define_class!(
             let mut state = self.ivars().0.borrow_mut();
             let state = state.as_mut().unwrap();
             state.config["activated"] = true.into();
+            state.awake = Some(NSProcessInfo::processInfo().beginActivityWithOptions_reason(
+                NSActivityOptions::IdleSystemSleepDisabled, &NSString::from_str("The alarm is armed")));
             state.monitor.start();
             state.toggle.setTitle(&NSString::from_str("Deactivate"));
             set_icon(&state.item, "menubar_armed.pdf", true);
@@ -132,6 +135,9 @@ impl App {
         state.config["activated"] = false.into();
         state.monitor.stop();
         while state.events.try_recv().is_ok() {}
+        if let Some(activity) = state.awake.take() {
+            unsafe { NSProcessInfo::processInfo().endActivity(&activity) };
+        }
         stop_alarm();
         hide_overlay();
         state.toggle.setTitle(&NSString::from_str("Activate"));
@@ -330,6 +336,7 @@ pub fn run() {
         events,
         item,
         toggle,
+        awake: None,
     });
     application.setDelegate(Some(ProtocolObject::from_ref(&*app)));
     unsafe {

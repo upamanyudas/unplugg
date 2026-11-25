@@ -6,6 +6,7 @@ mod capture;
 #[allow(dead_code)]
 mod devices;
 mod dialogs;
+mod guide;
 #[allow(dead_code)]
 mod location;
 #[allow(dead_code)]
@@ -13,6 +14,7 @@ mod loginitem;
 mod overlay;
 #[allow(dead_code)]
 mod permissions;
+mod prefs;
 #[allow(dead_code)]
 mod sensors;
 #[allow(dead_code)]

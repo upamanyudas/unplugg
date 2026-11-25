@@ -18,14 +18,15 @@ use objc2_foundation::{NSActivityOptions, NSProcessInfo, NSString, NSTimer};
 use serde_json::{Map, Value};
 
 use super::dialogs::{self, alert};
-use super::{auth, capture, location, overlay, sensors, siren, utils};
+use super::{auth, capture, guide, location, overlay, prefs, sensors, siren, utils};
 use crate::live;
 use crate::monitor::{Monitor, MonitorConfig, Sensors};
 
-struct State {
+pub(super) struct State {
     config: Map<String, Value>,
     laptop: bool,
     monitor: Monitor<sensors::MacSensors>,
+    monitor_config: Arc<RwLock<MonitorConfig>>,
     events: mpsc::Receiver<String>,
     item: Retained<NSStatusItem>,
     toggle: Retained<NSMenuItem>,
@@ -34,13 +35,13 @@ struct State {
     alarm_cancel: Option<Arc<AtomicBool>>,
 }
 
-struct AppIvars(RefCell<Option<State>>);
+pub(super) struct AppIvars(RefCell<Option<State>>);
 
 define_class!(
     #[unsafe(super(NSObject))]
     #[thread_kind = objc2::MainThreadOnly]
     #[ivars = AppIvars]
-    struct App;
+    pub(super) struct App;
 
     unsafe impl NSObjectProtocol for App {}
 
@@ -96,13 +97,13 @@ define_class!(
         }
 
         #[unsafe(method(preferences:))]
-        fn preferences(&self, _: &AnyObject) { open_preferences(); }
+        fn preferences(&self, _: &AnyObject) { prefs::open(self); }
         #[unsafe(method(about:))]
         fn about(&self, _: &AnyObject) { dialogs::show_about(); }
         #[unsafe(method(updates:))]
         fn updates(&self, _: &AnyObject) { check_updates(); }
         #[unsafe(method(guide:))]
-        fn guide(&self, _: &AnyObject) { open_guide(); }
+        fn guide(&self, _: &AnyObject) { guide::open(self); }
         #[unsafe(method(help:))]
         fn help(&self, _: &AnyObject) { dialogs::show_help(); }
         #[unsafe(method(quit:))]
@@ -112,7 +113,7 @@ define_class!(
         #[unsafe(method(launch:))]
         fn launch(&self, _: &AnyObject) {
             prepare_alarm();
-            if self.ivars().0.borrow().as_ref().unwrap().config["setup_done"] != true { open_guide(); }
+            if self.get("setup_done") != true { guide::open(self); }
         }
         #[unsafe(method(scheduleUpdates:))]
         fn schedule_updates(&self, _: &AnyObject) { schedule_updates(); }
@@ -143,6 +144,19 @@ define_class!(
 );
 
 impl App {
+    pub(super) fn get(&self, key: &str) -> Value {
+        self.ivars().0.borrow().as_ref().unwrap().config.get(key).cloned().unwrap_or(Value::Null)
+    }
+
+    /// Saves the change, and the monitor sees it on its next poll.
+    pub(super) fn set(&self, key: &str, value: Value) {
+        let mut state = self.ivars().0.borrow_mut();
+        let state = state.as_mut().unwrap();
+        state.config.insert(key.into(), value);
+        *state.monitor_config.write().unwrap() = monitor_config(&state.config);
+        let _ = crate::config::save_config(&state.config);
+    }
+
     fn new(mtm: MainThreadMarker) -> Retained<Self> {
         let this = Self::alloc(mtm).set_ivars(AppIvars(RefCell::new(None)));
         unsafe { msg_send![super(this), init] }
@@ -183,7 +197,16 @@ impl App {
     }
 }
 
-fn settings_name() -> &'static str {
+fn monitor_config(config: &Map<String, Value>) -> MonitorConfig {
+    MonitorConfig {
+        monitor_power: config["monitor_power"] == true,
+        monitor_lid: config["monitor_lid"] == true,
+        monitor_motion: config["monitor_motion"] == true,
+        angle_threshold: config["angle_threshold"].as_f64().unwrap_or(5.0),
+    }
+}
+
+pub(super) fn settings_name() -> &'static str {
     if NSProcessInfo::processInfo()
         .operatingSystemVersion()
         .majorVersion
@@ -320,24 +343,20 @@ pub fn run() {
     }
     item.setMenu(Some(&menu));
     set_icon(&item, "menubar.pdf", true);
-    let monitor_config = MonitorConfig {
-        monitor_power: config["monitor_power"] == true,
-        monitor_lid: config["monitor_lid"] == true,
-        monitor_motion: config["monitor_motion"] == true,
-        angle_threshold: config["angle_threshold"].as_f64().unwrap_or(5.0),
-    };
+    let monitor_config = Arc::new(RwLock::new(monitor_config(&config)));
     let (sender, events) = mpsc::channel();
     let monitor = Monitor::new(
         move |reason| {
             let _ = sender.send(reason.to_owned());
         },
-        Arc::new(RwLock::new(monitor_config)),
+        monitor_config.clone(),
         sensors::MacSensors,
     );
     *app.ivars().0.borrow_mut() = Some(State {
         config,
         laptop,
         monitor,
+        monitor_config,
         events,
         item,
         toggle,
@@ -372,10 +391,8 @@ pub fn run() {
     application.run();
 }
 
-fn open_preferences() {}
 fn check_updates() {}
 fn schedule_updates() {}
-fn open_guide() {}
 fn prepare_alarm() {
     siren::prepare();
 }

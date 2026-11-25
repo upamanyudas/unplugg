@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 type Config = Map<String, Value>;
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
 
-fn home() -> PathBuf {
+pub fn home() -> PathBuf {
     #[cfg(windows)]
     let key = "USERPROFILE";
     #[cfg(not(windows))]

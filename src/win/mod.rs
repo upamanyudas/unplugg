@@ -1,5 +1,7 @@
 mod app;
 #[allow(dead_code)]
+mod sensors;
+#[allow(dead_code)]
 mod loginitem;
 #[allow(dead_code)]
 mod permissions;

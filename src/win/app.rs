@@ -9,7 +9,8 @@ use windows_sys::Win32::System::Threading::CreateMutexW;
 use windows_sys::Win32::UI::Shell::*;
 use windows_sys::Win32::UI::WindowsAndMessaging::*;
 
-use crate::monitor::{Monitor, MonitorConfig, Sensors};
+use crate::monitor::{Monitor, MonitorConfig};
+use super::sensors::WinSensors;
 
 const TRAY: u32 = WM_APP + 1;
 const ALARM: u32 = WM_APP + 2;
@@ -20,25 +21,9 @@ thread_local! {
     static STATE: RefCell<Option<State>> = const { RefCell::new(None) };
 }
 
-struct PendingSensors;
-impl Sensors for PendingSensors {
-    fn is_plugged_in(&self) -> bool {
-        true
-    }
-    fn is_lid_closed(&self) -> bool {
-        false
-    }
-    fn lid_angle(&self) -> Option<f64> {
-        None
-    }
-    fn acceleration(&self) -> Option<[f64; 3]> {
-        None
-    }
-}
-
 struct State {
     config: Map<String, Value>,
-    monitor: Monitor<PendingSensors>,
+    monitor: Monitor<WinSensors>,
     icon: NOTIFYICONDATAW,
 }
 
@@ -221,7 +206,7 @@ pub fn run() {
                 PostMessageW(target as HWND, ALARM, 0, 0);
             },
             monitor_config,
-            PendingSensors,
+            WinSensors,
         );
         let mut tray = NOTIFYICONDATAW::default();
         tray.cbSize = std::mem::size_of::<NOTIFYICONDATAW>() as u32;

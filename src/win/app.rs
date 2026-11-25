@@ -1,6 +1,7 @@
 use std::cell::RefCell;
 use std::ptr::{null, null_mut};
 use std::sync::{Arc, RwLock};
+use std::time::Duration;
 
 use serde_json::{Map, Value};
 use windows_sys::Win32::Foundation::*;
@@ -34,6 +35,7 @@ struct State {
     icon: NOTIFYICONDATAW,
     menu_owner: HWND,
     siren: Option<super::siren::Siren>,
+    tracking: Option<(super::location::Source, crate::live::Tracker)>,
 }
 
 fn wide(s: &str) -> Vec<u16> {
@@ -115,14 +117,28 @@ unsafe extern "system" fn window(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> 
                 if let Some(state) = s.borrow_mut().as_mut() {
                     if state.config["activated"] == true {
                         set_icon(state, "alarm");
+                        if event.1["live_location"] == true && state.tracking.is_none() {
+                            let tracker =
+                                crate::live::Tracker::start(&Value::Object(event.1.clone()));
+                            let updates = tracker.clone();
+                            let source =
+                                super::location::Source::start(move |fix| updates.update(fix));
+                            state.tracking = Some((source, tracker));
+                        }
                         if event.1["show_overlay"] == true || event.1["flash_screen"] == true {
-                            super::overlay::show(hwnd, UNLOCK, true, event.1["flash_screen"] == true);
+                            super::overlay::show(
+                                hwnd,
+                                UNLOCK,
+                                true,
+                                event.1["flash_screen"] == true,
+                            );
                         }
                         if event.1["play_sound"] == true && state.siren.is_none() {
-                            state.siren = Some(super::siren::Siren::start(event.1["speaker_name"].as_str().unwrap_or("")));
+                            state.siren = Some(super::siren::Siren::start(
+                                event.1["speaker_name"].as_str().unwrap_or(""),
+                            ));
                         }
                     }
-                    alarm(&event.0, &event.1);
                 }
             });
             0
@@ -214,6 +230,13 @@ unsafe fn toggle(hwnd: HWND) {
         MessageBoxW(hwnd, wide("Your laptop should be plugged in to power before you can activate the alarm. Alternatively, turn off \"Power unplugged\" in Settings.").as_ptr(), wide("Plug in first").as_ptr(), MB_OK);
         return;
     }
+    if STATE.with(|s| {
+        s.borrow().as_ref().is_some_and(|state| {
+            state.config["send_location"] == true || state.config["live_location"] == true
+        })
+    }) {
+        let _ = windows::Devices::Geolocation::Geolocator::RequestAccessAsync();
+    }
     STATE.with(|s| {
         if let Some(state) = s.borrow_mut().as_mut() {
             state.config["activated"] = true.into();
@@ -241,9 +264,9 @@ unsafe fn quit(hwnd: HWND) {
         if let Some(state) = s.borrow_mut().as_mut() {
             state.monitor.stop();
             state.siren = None;
+            stop_tracking(state, "unplugg quit", Duration::from_secs(5));
             super::power::release(&mut state.config);
             super::overlay::hide();
-            stop_alarm();
             Shell_NotifyIconW(NIM_DELETE, &state.icon);
             DestroyIcon(state.icon.hIcon);
         }
@@ -254,13 +277,43 @@ fn preferences() {}
 fn guide() {}
 fn dialogs() {}
 fn updates() {}
-fn alarm(_reason: &str, _config: &Map<String, Value>) {}
-fn stop_alarm() {}
+fn alarm(reason: String, config: Map<String, Value>) {
+    let config = Value::Object(config);
+    if config["lock_device"] == true {
+        super::utils::lock_screen();
+    }
+    let document = if config["capture_media"] == true {
+        super::capture::capture(&config)
+    } else {
+        None
+    };
+    let link = if config["send_location"] == true {
+        super::location::maps_link(Duration::from_secs(8))
+    } else {
+        None
+    };
+    crate::telegram::send_alert_with_document(
+        &reason,
+        &config,
+        None,
+        None,
+        link.as_deref(),
+        document.as_deref(),
+    );
+}
+
+fn stop_tracking(state: &mut State, reason: &'static str, wait: Duration) {
+    if let Some((source, tracker)) = state.tracking.take() {
+        source.stop();
+        tracker.stop(reason, wait);
+    }
+}
 unsafe fn deactivate() {
     STATE.with(|s| {
         if let Some(state) = s.borrow_mut().as_mut() {
             state.config["activated"] = false.into();
             state.monitor.stop();
+            stop_tracking(state, "the alarm was turned off", Duration::ZERO);
             state.siren = None;
             super::power::release(&mut state.config);
             super::overlay::hide();
@@ -271,7 +324,10 @@ unsafe fn deactivate() {
 }
 
 unsafe fn unlock(hwnd: HWND) {
-    if !super::auth::require("unlock the screen", windows::Win32::Foundation::HWND(super::overlay::window())) {
+    if !super::auth::require(
+        "unlock the screen",
+        windows::Win32::Foundation::HWND(super::overlay::window()),
+    ) {
         super::overlay::listen();
         return;
     }
@@ -281,7 +337,14 @@ unsafe fn unlock(hwnd: HWND) {
             state.siren = None;
         }
     });
-    if MessageBoxW(hwnd, wide("Keep Armed hides this cover; the alarm keeps watching.\n\nDeactivate the alarm?").as_ptr(), wide("Deactivate the alarm?").as_ptr(), MB_YESNO | MB_ICONQUESTION) == IDYES {
+    if MessageBoxW(
+        hwnd,
+        wide("Keep Armed hides this cover; the alarm keeps watching.\n\nDeactivate the alarm?")
+            .as_ptr(),
+        wide("Deactivate the alarm?").as_ptr(),
+        MB_YESNO | MB_ICONQUESTION,
+    ) == IDYES
+    {
         deactivate();
     }
 }
@@ -347,10 +410,12 @@ pub fn run() {
         let snapshot = Arc::clone(&alarm_config);
         let monitor = Monitor::new(
             move |reason| {
-                let event = Box::into_raw(Box::new((
-                    reason.to_owned(),
-                    snapshot.read().unwrap().clone(),
-                )));
+                let config = snapshot.read().unwrap().clone();
+                let event_reason = reason.to_owned();
+                let alert_config = config.clone();
+                let alert_reason = event_reason.clone();
+                std::thread::spawn(move || alarm(alert_reason, alert_config));
+                let event = Box::into_raw(Box::new((event_reason, config)));
                 if PostMessageW(target as HWND, ALARM, 0, event as LPARAM) == 0 {
                     drop(Box::from_raw(event));
                 }
@@ -389,6 +454,7 @@ pub fn run() {
                 icon: tray,
                 menu_owner: power_hwnd,
                 siren: None,
+                tracking: None,
             })
         });
         let notification = RegisterPowerSettingNotification(

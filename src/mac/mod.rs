@@ -5,6 +5,7 @@ mod auth;
 mod devices;
 #[allow(dead_code)]
 mod loginitem;
+mod overlay;
 #[allow(dead_code)]
 mod permissions;
 #[allow(dead_code)]

@@ -14,7 +14,7 @@ use objc2_app_kit::{
 use objc2_foundation::{NSActivityOptions, NSProcessInfo, NSString, NSTimer};
 use serde_json::{Map, Value};
 
-use super::{auth, sensors, siren, utils};
+use super::{auth, overlay, sensors, siren, utils};
 use crate::monitor::{Monitor, MonitorConfig, Sensors};
 
 struct State {
@@ -378,6 +378,13 @@ fn stop_alarm() {
     siren::stop();
 }
 fn trigger_alarm(_reason: &str) {}
-fn show_overlay(_app: &App, _alarm: bool, _flash: bool) {}
-fn listen_overlay() {}
-fn hide_overlay() {}
+fn show_overlay(app: &App, alarm: bool, flash: bool) {
+    let app = unsafe { Retained::retain(app as *const App as *mut App) }.unwrap();
+    overlay::show(std::rc::Rc::new(move || app.unlock()), alarm, flash);
+}
+fn listen_overlay() {
+    overlay::listen();
+}
+fn hide_overlay() {
+    overlay::hide();
+}

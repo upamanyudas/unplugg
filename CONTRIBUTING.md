@@ -11,27 +11,27 @@ Issues and pull requests are welcome. Keep each change small and focused.
 ## Run from source
 
 ```bash
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-python main.py
+cargo run
 ```
 
-On Windows, activate with `.venv\Scripts\activate`. `requirements.txt` picks
-each OS's packages: PyObjC on macOS, Qt everywhere else.
+Install Rust with [rustup](https://rustup.rs). Linux also needs
+`libgtk-3-dev libssl-dev libclang-dev nasm` (Ubuntu names). `cargo test` runs
+the shared core's tests.
 
-From source on macOS, Location belongs to your terminal app, so Settings shows
-"Via terminal". The dev .app below gets its own. `python -m unplugg.sensors`
-(macOS) or `python -m unplugg.pc.sensors` (Windows, Linux) checks the readers.
+From source on macOS, camera, mic and location belong to your terminal app.
+The .app below asks for its own.
 
-## Build the .app
+## Build
 
 ```bash
-# dev: a real .app running your live source, so prompts show unplugg, not Python
-python setup.py py2app -A && open dist/unplugg.app
-
-# release: standalone
-rm -rf build dist && python setup.py py2app
+packaging/mac/build.sh     # dist/unplugg.app and dist/unplugg.dmg, universal
+packaging/linux/build.sh   # dist/: the AppImage, .deb and .rpm, on Ubuntu 22.04
 ```
+
+Windows: `cargo build --release --target x86_64-pc-windows-msvc` (or
+`aarch64-pc-windows-msvc`), then
+`makensis -DAppVersion=<version> -DArch=x64 packaging/windows/unplugg.nsi`.
+CI builds every one of them on each push (`build.yml`).
 
 Camera, mic and location grants belong to the app's signature. An ad-hoc one
 changes every build, so macOS asks again. To keep grants across rebuilds, make
@@ -39,48 +39,28 @@ a certificate once: **Keychain Access › Certificate Assistant › Create a
 Certificate**, name `unplugg cert`, type **Code Signing**. The build signs with
 it whenever it exists.
 
-The "Modules not found" list at the end of a build is normal. The lid-angle
-sensor is undocumented HID, so the app runs un-sandboxed (no App Store).
+The lid-angle sensor is undocumented HID, so the app runs un-sandboxed (no App Store).
 
-## Build for Windows or Linux
-
-```bash
-python packaging/build.py      # dist/unplugg/, the app and its Python and Qt
-```
-
-The release workflow wraps that folder. Windows: `packaging/windows/unplugg.iss`
-(Inno Setup) and a zip. Linux: an AppImage, and a .deb and .rpm from
-`packaging/linux/nfpm.yaml`. The .deb and .rpm install the polkit action
-`com.unplugg.app.disarm`, so disarming asks for your own password.
+Linux ships FAAC (LGPL) as its own `lib/unplugg/libfaac.so`, so anyone can swap
+in their own build. OpenH264 is built in from source.
 
 ## Layout
 
 ```
-main.py              entry point: unplugg/ on macOS, unplugg/pc/ elsewhere
-setup.py             py2app build
-unplugg/             macOS (PyObjC), plus what every OS shares:
-  config.py          settings, JSON in the OS's per-user settings folder
-  monitor.py         polling loop, fires one "unsafe" event
-  telegram.py        Telegram Bot API
-  app.py             menu bar app (rumps)
-  preferences.py     Settings window, every setting lives here
-  guide.py           setup guide
-  updater.py         updates from the latest GitHub release
-  sensors.py         power, lid angle, clamshell
-  alarm.py           the response: siren, capture, location, Telegram, lock
-  capture.py         video with sound + stills (AVFoundation)
-  devices.py         cameras, mics (AVFoundation), speakers (CoreAudio)
-  permissions.py     camera, mic, location status and requests
-  location.py        CoreLocation → maps link
-  overlay.py         full-screen cover while armed
-  dialogs.py         alerts, Telegram setup panel, About, Help
-  auth.py            Touch ID / password gate
-  loginitem.py       launch-at-login LaunchAgent
-  utils.py           asset paths, Dock icon, screen lock
-  pc/                Windows + Linux (Qt), the same modules, plus:
-    power.py         stay awake, ignore lid and buttons while armed; shutdown events
+Cargo.toml           the version lives here
+src/                 what every OS shares:
+  main.rs            entry point: mac/, win/ or linux/
+  config.rs          settings, JSON in the OS's per-user settings folder
+  monitor.rs         polling loop, fires one "unsafe" event
+  telegram.rs        Telegram Bot API
+  live.rs            live location in Telegram
+  updater.rs         latest release, versions, checksums
+  mac/               AppKit, AVFoundation, CoreLocation through objc2
+  win/               Win32, WinRT, Media Foundation through the windows crate
+  linux/             GTK 3, a D-Bus tray, V4L2, PulseAudio, GeoClue
+    mp4.rs           a small MP4 writer for H.264 + AAC
 assets/              icons, menu bar glyphs, siren
-packaging/           build.py (PyInstaller), the Windows installer, Linux packages
+packaging/           mac, Windows (NSIS) and Linux builds
 bucket/unplugg.json  Scoop manifest: this repo is a Scoop bucket
 Casks/unplugg.rb     Homebrew cask, macOS and Linux
 _design/             icon sources, icons.py rebuilds them all
@@ -96,22 +76,23 @@ _design/             icon sources, icons.py rebuilds them all
 | `assets/menubar*.svg` | Windows and Linux tray, tinted to the taskbar |
 | `assets/logo.ico` | Windows exe and installer |
 | `assets/logo.png` | Linux, and every OS's windows and dialogs |
+| `assets/siren.flac` | the siren, lossless |
 | `_design/telegram-avatar.png` | your bot: @BotFather → `/setuserpic` |
 | `_design/social-preview.png` | repo **Settings › Social preview** |
 
 Edit the logo, then run `python3 _design/icons.py` (needs Sketch, Xcode 26+,
-`brew install imagemagick librsvg`). `_design/unplugg.icon` opens in Icon Composer.
+`brew install imagemagick librsvg oxipng`). oxipng shrinks every PNG losslessly. `_design/unplugg.icon` opens in Icon Composer.
 
 ## Releasing
 
 **Actions › Release unplugg › Run workflow**, pick `patch`, `minor` or `major`,
-or type an exact version (the first release: `1.0.0`). It builds on Apple
-Silicon and Intel Macs, and x64 and ARM64 Windows and Linux runners
-(`build.yml`, which also runs on every push). Once all pass, it commits the
-version to `unplugg/__init__.py`, `Casks/unplugg.rb` and `bucket/unplugg.json`
-with their sha256s, tags it, and attaches, each with a `.sha256`:
+or type an exact version. It runs `build.yml`. Once all pass, it commits the
+version to `Cargo.toml`, `Cargo.lock`, `Casks/unplugg.rb` and
+`bucket/unplugg.json` with their sha256s, tags it, and attaches, each with a
+`.sha256`:
 
-- `unplugg-arm64.dmg`, `unplugg-x86_64.dmg`
+- `unplugg.dmg`, plus the same file as `unplugg-arm64.dmg` and
+  `unplugg-x86_64.dmg`, the names 1.x's updater looks for
 - `unplugg-windows-{x64,arm64}-setup.exe`, `unplugg-windows-{x64,arm64}.zip`
 - `unplugg-linux-{x86_64,arm64}.AppImage`, `unplugg-linux-{amd64,arm64}.deb`,
   `unplugg-linux-{x86_64,arm64}.rpm`
@@ -127,4 +108,3 @@ survive updates, releases are signed with the same `unplugg cert`, set once:
    (paste) and `UNPLUGG_CERT_PASSWORD`.
 
 Without them, releases are ad-hoc signed and macOS asks again after each update.
-Builds are per-arch: hidapi, behind the lid-angle sensor, ships no universal2 wheel.

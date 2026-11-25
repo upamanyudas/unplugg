@@ -8,6 +8,8 @@ mod power;
 #[allow(dead_code)]
 mod sensors;
 #[allow(dead_code)]
+mod siren;
+#[allow(dead_code)]
 mod utils;
 
 pub fn run() {

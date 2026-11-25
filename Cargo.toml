@@ -20,7 +20,8 @@ objc2-local-authentication = "0.3"
 block2 = "0.6"
 
 [target.'cfg(target_os = "windows")'.dependencies]
-windows = { version = "0.62", features = ["Devices_Sensors", "Foundation", "Security_Credentials_UI", "Win32_Graphics_Gdi", "Win32_Security", "Win32_Security_Credentials", "Win32_System_Com", "Win32_System_Power", "Win32_System_WinRT", "Win32_Foundation", "Win32_System_Registry", "Win32_System_Shutdown", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
+claxon = "0.4"
+windows = { version = "0.62", features = ["Devices_Sensors", "Foundation", "Win32_Media_Audio", "Win32_Media_Audio_Endpoints", "Win32_System_Com_StructuredStorage", "Win32_System_Variant", "Win32_UI_Shell_PropertiesSystem", "Security_Credentials_UI", "Win32_Graphics_Gdi", "Win32_Security", "Win32_Security_Credentials", "Win32_System_Com", "Win32_System_Power", "Win32_System_WinRT", "Win32_Foundation", "Win32_System_Registry", "Win32_System_Shutdown", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_Security", "Win32_System_LibraryLoader", "Win32_System_Power", "Win32_System_Registry", "Win32_System_Shutdown", "Win32_System_SystemServices", "Win32_System_Threading", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
 
 [profile.release]

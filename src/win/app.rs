@@ -32,6 +32,7 @@ struct State {
     monitor: Monitor<WinSensors>,
     icon: NOTIFYICONDATAW,
     menu_owner: HWND,
+    siren: Option<super::siren::Siren>,
 }
 
 fn wide(s: &str) -> Vec<u16> {
@@ -109,6 +110,9 @@ unsafe extern "system" fn window(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> 
                 if let Some(state) = s.borrow_mut().as_mut() {
                     if state.config["activated"] == true {
                         set_icon(state, "alarm");
+                        if event.1["play_sound"] == true && state.siren.is_none() {
+                            state.siren = Some(super::siren::Siren::start(event.1["speaker_name"].as_str().unwrap_or("")));
+                        }
                     }
                     alarm(&event.0, &event.1);
                 }
@@ -190,6 +194,7 @@ unsafe fn toggle(hwnd: HWND) {
             if let Some(state) = s.borrow_mut().as_mut() {
                 state.config["activated"] = false.into();
                 state.monitor.stop();
+                state.siren = None;
                 super::power::release(&mut state.config);
                 set_icon(state, "idle");
                 let _ = crate::config::save_config(&state.config);
@@ -236,6 +241,7 @@ unsafe fn quit(hwnd: HWND) {
     STATE.with(|s| {
         if let Some(state) = s.borrow_mut().as_mut() {
             state.monitor.stop();
+            state.siren = None;
             super::power::release(&mut state.config);
             hide_overlay();
             stop_alarm();
@@ -356,6 +362,7 @@ pub fn run() {
                 monitor,
                 icon: tray,
                 menu_owner: power_hwnd,
+                siren: None,
             })
         });
         let notification = RegisterPowerSettingNotification(

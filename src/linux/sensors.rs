@@ -33,10 +33,6 @@ pub fn is_laptop() -> bool {
     !batteries(&supplies()).is_empty()
 }
 
-pub fn has_angle_sensor() -> bool {
-    false
-}
-
 fn accelerometer() -> Option<PathBuf> {
     fs::read_dir("/sys/bus/iio/devices").ok()?.flatten().map(|entry| entry.path()).find(|path| path.join("in_accel_x_raw").exists())
 }

@@ -1,6 +1,6 @@
 """Rebuild every icon from the design sources:  python3 _design/icons.py
 
-Needs Sketch, Xcode 26+ and `brew install imagemagick librsvg`.
+Needs Sketch, Xcode 26+ and `brew install imagemagick librsvg oxipng`.
 
 unplugg.sketch  → logo.png + logo.icns (macOS 10.15–15, refit to Apple's squircle grid;
                   the .sketch is kept out of git, so only its owner can re-run this step)
@@ -11,6 +11,7 @@ menubar*.svg    → menubar*.pdf         (status item: idle + armed templates, r
 plus the Telegram bot avatar and GitHub social preview, written next to this file.
 """
 import json
+import struct
 import shutil
 import subprocess
 import tempfile
@@ -61,6 +62,21 @@ def export(tmp, keep):
     return next(tmp.glob("Artboard 1@*.png")).rename(tmp / f"{keep}.png")
 
 
+# iconutil would recompress the optimised PNGs, so pack the icns by hand: a header,
+# then each PNG behind its 4-letter type and length
+ICNS = [("icp4", "16x16"), ("ic11", "16x16@2x"), ("icp5", "32x32"), ("ic12", "32x32@2x"),
+        ("ic07", "128x128"), ("ic13", "128x128@2x"), ("ic08", "256x256"), ("ic14", "256x256@2x"),
+        ("ic09", "512x512"), ("ic10", "512x512@2x")]
+
+
+def pack_icns(iconset, out):
+    body = b""
+    for kind, name in ICNS:
+        png = (iconset / f"icon_{name}.png").read_bytes()
+        body += kind.encode() + struct.pack(">I", 8 + len(png)) + png
+    out.write_bytes(b"icns" + struct.pack(">I", 8 + len(body)) + body)
+
+
 def main():
     with tempfile.TemporaryDirectory() as t:
         tmp = Path(t)
@@ -79,7 +95,8 @@ def main():
                 px = pt * scale
                 run("magick", master, "-filter", "Lanczos", "-resize", f"{px}x{px}", "-strip",
                     iconset / f"icon_{pt}x{pt}{suffix}.png")
-        run("iconutil", "-c", "icns", iconset, "-o", ASSETS / "logo.icns")
+        run("oxipng", "-q", "-o", "max", "--strip", "safe", *iconset.glob("*.png"))  # lossless
+        pack_icns(iconset, ASSETS / "logo.icns")
         shutil.copy(iconset / "icon_512x512@2x.png", ASSETS / "logo.png")
         run("magick", ASSETS / "logo.png", "-define", "icon:auto-resize=256,64,48,32,24,16",
             ASSETS / "logo.ico")

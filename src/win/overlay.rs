@@ -8,6 +8,7 @@ use std::time::{Duration, Instant};
 use windows_sys::Win32::Foundation::*;
 use windows_sys::Win32::Graphics::Gdi::*;
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
+use windows_sys::Win32::System::Threading::GetCurrentThreadId;
 use windows_sys::Win32::UI::WindowsAndMessaging::*;
 
 const CLASS: &str = "unplugg-cover";
@@ -25,6 +26,35 @@ struct State {
     flash: bool,
 }
 thread_local! { static STATE: RefCell<State> = RefCell::new(State::default()); }
+thread_local! { static BUTTONS: RefCell<(Vec<u16>, Vec<u16>)> = RefCell::new((Vec::new(), Vec::new())); }
+
+unsafe extern "system" fn dialog_hook(code: i32, w: WPARAM, l: LPARAM) -> LRESULT {
+    if code == HCBT_ACTIVATE as i32 {
+        let dialog = w as HWND;
+        BUTTONS.with(|buttons| {
+            let buttons = buttons.borrow();
+            SetWindowTextW(GetDlgItem(dialog, IDOK), buttons.0.as_ptr());
+            SetWindowTextW(GetDlgItem(dialog, IDCANCEL), buttons.1.as_ptr());
+        });
+    }
+    CallNextHookEx(null_mut(), code, w, l)
+}
+
+pub unsafe fn confirm(hwnd: HWND, title: &str, text: &str, first: &str, second: &str) -> bool {
+    BUTTONS.with(|buttons| *buttons.borrow_mut() = (wide(first), wide(second)));
+    let hook = SetWindowsHookExW(WH_CBT, Some(dialog_hook), null_mut(), GetCurrentThreadId());
+    if hook.is_null() {
+        return false;
+    }
+    let result = MessageBoxW(
+        hwnd,
+        wide(&format!("{title}\n\n{text}")).as_ptr(),
+        wide("unplugg").as_ptr(),
+        MB_OKCANCEL | MB_TOPMOST,
+    );
+    UnhookWindowsHookEx(hook);
+    result == IDOK
+}
 
 fn wide(s: &str) -> Vec<u16> {
     s.encode_utf16().chain(Some(0)).collect()
@@ -369,11 +399,38 @@ unsafe fn paint(hwnd: HWND) {
             &mut line,
             DT_CENTER | DT_SINGLELINE | DT_VCENTER,
         );
-        let mut badge = wide(if alarm {
-            "●  Alarm triggered"
-        } else {
-            "●  Armed"
-        });
+        SelectObject(dc, old);
+        DeleteObject(font);
+        let font = CreateFontW(
+            -16,
+            0,
+            0,
+            0,
+            400,
+            0,
+            0,
+            0,
+            DEFAULT_CHARSET as u32,
+            0,
+            0,
+            0,
+            0,
+            wide("Segoe UI").as_ptr(),
+        );
+        let old = SelectObject(dc, font);
+        let mut dot = wide("●  ");
+        let mut badge = wide(if alarm { "Alarm triggered" } else { "Armed" });
+        let mut dot_size = SIZE::default();
+        let mut badge_size = SIZE::default();
+        GetTextExtentPoint32W(dc, dot.as_ptr(), dot.len() as i32 - 1, &mut dot_size);
+        GetTextExtentPoint32W(dc, badge.as_ptr(), badge.len() as i32 - 1, &mut badge_size);
+        let mut animate = 0i32;
+        SystemParametersInfoW(
+            SPI_GETCLIENTAREAANIMATION,
+            0,
+            (&mut animate as *mut i32).cast(),
+            0,
+        );
         let elapsed = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
@@ -384,21 +441,39 @@ unsafe fn paint(hwnd: HWND) {
         } else {
             2000 - elapsed
         };
-        let intensity = 255 - (phase * 3 / 16) as u32;
+        let intensity = if animate != 0 {
+            255 - (phase * 3 / 16) as u32
+        } else {
+            255
+        };
         let color = if alarm { 0x00303bffu32 } else { 0x0059c734u32 };
-        let fade = |v: u32| (v * intensity / 255) & 255;
+        let fade = |v: u32, background: u32| (v * intensity + background * (255 - intensity)) / 255;
         SetTextColor(
             dc,
-            fade(color & 255) | (fade((color >> 8) & 255) << 8) | (fade((color >> 16) & 255) << 16),
+            fade(color & 255, 18)
+                | (fade((color >> 8) & 255, 18) << 8)
+                | (fade((color >> 16) & 255, 22) << 16),
         );
+        line.left = (rect.right - dot_size.cx - badge_size.cx) / 2;
+        line.right = line.left + dot_size.cx;
         line.top = center + 52;
         line.bottom = center + 82;
+        DrawTextW(
+            dc,
+            dot.as_mut_ptr(),
+            -1,
+            &mut line,
+            DT_LEFT | DT_SINGLELINE | DT_VCENTER,
+        );
+        line.left = line.right;
+        line.right += badge_size.cx;
+        SetTextColor(dc, 0x00bbbbbb);
         DrawTextW(
             dc,
             badge.as_mut_ptr(),
             -1,
             &mut line,
-            DT_CENTER | DT_SINGLELINE | DT_VCENTER,
+            DT_LEFT | DT_SINGLELINE | DT_VCENTER,
         );
         SelectObject(dc, old);
         DeleteObject(font);

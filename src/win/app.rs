@@ -22,6 +22,10 @@ const TRAY: u32 = WM_APP + 1;
 const ALARM: u32 = WM_APP + 2;
 const SETTINGS: u32 = WM_APP + 3;
 const UNLOCK: u32 = WM_APP + 4;
+// timers: the first update check once launch has settled, then daily; the updater's answers
+const UPDATES: usize = 1;
+const UPDATER: usize = 2;
+const DAY_MS: u32 = 24 * 60 * 60 * 1000;
 const CLASS: &str = "unplugg-tray-window";
 
 thread_local! {
@@ -142,6 +146,20 @@ unsafe extern "system" fn window(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> 
                     }
                 }
             });
+            0
+        }
+        WM_TIMER if w == UPDATES => {
+            if config()["check_updates"] == true {
+                super::updater::check(false);
+            }
+            SetTimer(hwnd, UPDATES, DAY_MS, None);
+            0
+        }
+        WM_TIMER if w == UPDATER => {
+            // dialogs get no owner: this window is message-only
+            if super::updater::poll(null_mut()) {
+                quit(hwnd);
+            }
             0
         }
         WM_COMMAND => {
@@ -281,7 +299,9 @@ fn preferences() {
     super::ui::open_settings();
 }
 fn guide() { super::guide::open(); }
-fn updates() {}
+fn updates() {
+    super::updater::check(true);
+}
 fn alarm(reason: String, config: Map<String, Value>) {
     let config = Value::Object(config);
     if config["lock_device"] == true {
@@ -482,6 +502,8 @@ pub fn run() {
         if self::config()["setup_done"] != true {
             guide();
         }
+        SetTimer(hwnd, UPDATES, 10_000, None);
+        SetTimer(hwnd, UPDATER, 1_000, None);
         let notification = RegisterPowerSettingNotification(
             power_hwnd,
             &GUID_LIDSWITCH_STATE_CHANGE,

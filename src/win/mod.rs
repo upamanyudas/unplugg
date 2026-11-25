@@ -20,6 +20,7 @@ mod sensors;
 #[allow(dead_code)]
 mod siren;
 mod ui;
+mod updater;
 #[allow(dead_code)]
 mod utils;
 

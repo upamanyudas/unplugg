@@ -1,0 +1,11 @@
+[package]
+name = "unplugg"
+version = "1.2.0"
+edition = "2021"
+
+[profile.release]
+opt-level = "z"
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = true

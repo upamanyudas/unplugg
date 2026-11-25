@@ -337,13 +337,13 @@ unsafe fn unlock(hwnd: HWND) {
             state.siren = None;
         }
     });
-    if MessageBoxW(
+    if super::overlay::confirm(
         hwnd,
-        wide("Keep Armed hides this cover; the alarm keeps watching.\n\nDeactivate the alarm?")
-            .as_ptr(),
-        wide("Deactivate the alarm?").as_ptr(),
-        MB_YESNO | MB_ICONQUESTION,
-    ) == IDYES
+        "Deactivate the alarm?",
+        "Keep Armed hides this cover; the alarm keeps watching.",
+        "Deactivate",
+        "Keep Armed",
+    )
     {
         deactivate();
     }

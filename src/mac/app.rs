@@ -1,6 +1,7 @@
 use std::cell::RefCell;
 use std::fs::{self, File, OpenOptions};
 use std::sync::{mpsc, Arc, RwLock};
+use std::time::Duration;
 
 use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, NSObject, NSObjectProtocol, ProtocolObject, Sel};
@@ -54,7 +55,8 @@ define_class!(
             let state = state.as_mut().unwrap();
             state.monitor.stop();
             if state.config["block_lid_sleep"] == true { lidsleep::pmset(false); }
-            stop_tracking(state);
+            // let telegram hear the live location stop before the app is gone
+            stop_tracking(state, "unplugg quit", Duration::from_secs(5));
             stop_alarm();
             hide_overlay();
             NSApplicationTerminateReply::TerminateNow
@@ -178,7 +180,7 @@ impl App {
         if state.config["block_lid_sleep"] == true {
             lidsleep::pmset(false);
         }
-        stop_tracking(state);
+        stop_tracking(state, "the alarm was turned off", Duration::ZERO);
         while state.events.try_recv().is_ok() {}
         if let Some(activity) = state.awake.take() {
             unsafe { NSProcessInfo::processInfo().endActivity(&activity) };
@@ -415,10 +417,10 @@ fn prepare_alarm() {
 fn stop_alarm() {
     siren::stop();
 }
-fn stop_tracking(state: &mut State) {
+fn stop_tracking(state: &mut State, why: &'static str, wait: Duration) {
     if let Some((source, tracker)) = state.tracking.take() {
         source.stop();
-        tracker.stop();
+        tracker.stop(why, wait);
     }
 }
 

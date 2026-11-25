@@ -1,4 +1,5 @@
 use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -73,7 +74,7 @@ struct Destination {
 
 enum Event {
     Fix(Fix),
-    Stop,
+    Stop(&'static str),
 }
 
 enum Failure {
@@ -85,6 +86,7 @@ enum Failure {
 #[derive(Clone)]
 pub struct Tracker {
     workers: Vec<Sender<Event>>,
+    done: Arc<Mutex<Receiver<()>>>,
 }
 
 impl Tracker {
@@ -92,6 +94,7 @@ impl Tracker {
         let destinations = config
             .get("telegram_destinations")
             .and_then(Value::as_array);
+        let (finished, done) = mpsc::channel();
         let workers = destinations
             .into_iter()
             .flatten()
@@ -99,11 +102,15 @@ impl Tracker {
                 let token = destination.get("token")?.as_str()?.to_owned();
                 let chat = destination.get("chat_id")?.clone();
                 let (send, receive) = mpsc::channel();
-                thread::spawn(move || worker(Destination { token, chat }, receive, call));
+                let finished = finished.clone();
+                thread::spawn(move || {
+                    worker(Destination { token, chat }, receive, call);
+                    let _ = finished.send(());
+                });
                 Some(send)
             })
             .collect();
-        Self { workers }
+        Self { workers, done: Arc::new(Mutex::new(done)) }
     }
 
     pub fn update(&self, fix: Fix) {
@@ -112,9 +119,17 @@ impl Tracker {
         }
     }
 
-    pub fn stop(self) {
-        for worker in self.workers {
-            let _ = worker.send(Event::Stop);
+    /// Ends the live location in every chat and says why. Waits up to `wait` for that.
+    pub fn stop(self, why: &'static str, wait: Duration) {
+        for worker in &self.workers {
+            let _ = worker.send(Event::Stop(why));
+        }
+        let deadline = Instant::now() + wait;
+        let done = self.done.lock().unwrap();
+        for _ in &self.workers {
+            if done.recv_timeout(deadline.saturating_duration_since(Instant::now())).is_err() {
+                break;
+            }
         }
     }
 }
@@ -129,8 +144,12 @@ fn worker(
     loop {
         match receive.recv_timeout(Duration::from_secs(1)) {
             Ok(Event::Fix(fix)) => latest = Some(fix),
-            Ok(Event::Stop) | Err(mpsc::RecvTimeoutError::Disconnected) => {
-                stop_message(&destination, &state, &mut send);
+            Ok(Event::Stop(why)) => {
+                stop_message(&destination, &state, &mut send, why);
+                break;
+            }
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                stop_message(&destination, &state, &mut send, "unplugg stopped");
                 break;
             }
             Err(mpsc::RecvTimeoutError::Timeout) => (),
@@ -138,8 +157,8 @@ fn worker(
         while let Ok(event) = receive.try_recv() {
             match event {
                 Event::Fix(fix) => latest = Some(fix),
-                Event::Stop => {
-                    stop_message(&destination, &state, &mut send);
+                Event::Stop(why) => {
+                    stop_message(&destination, &state, &mut send, why);
                     return;
                 }
             }
@@ -178,6 +197,7 @@ fn stop_message(
     destination: &Destination,
     state: &State,
     send: &mut impl FnMut(&Destination, &str, Value) -> Result<Value, Failure>,
+    why: &str,
 ) {
     let Some(message) = state.message else { return };
     if let Some(retry_at) = state.retry_at {
@@ -193,6 +213,8 @@ fn stop_message(
             _ => break,
         }
     }
+    let text = format!("📍 Live location stopped: {why}.");
+    let _ = send(destination, "sendMessage", json!({"chat_id": destination.chat, "text": text}));
 }
 
 fn call(destination: &Destination, method: &str, body: Value) -> Result<Value, Failure> {
@@ -296,10 +318,13 @@ mod tests {
         let (method, body) = results.recv_timeout(Duration::from_secs(2)).unwrap();
         assert_eq!(method, "sendLocation");
         assert_eq!(body["live_period"], 2147483647);
-        events.send(Event::Stop).unwrap();
+        events.send(Event::Stop("the alarm was turned off")).unwrap();
         let (method, body) = results.recv_timeout(Duration::from_secs(2)).unwrap();
         assert_eq!(method, "stopMessageLiveLocation");
         assert_eq!(body["message_id"], 9);
+        let (method, body) = results.recv_timeout(Duration::from_secs(2)).unwrap();
+        assert_eq!(method, "sendMessage");
+        assert_eq!(body["text"], "📍 Live location stopped: the alarm was turned off.");
         worker.join().unwrap();
         assert!(results.try_recv().is_err());
     }

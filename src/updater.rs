@@ -122,6 +122,9 @@ mod tests {
     #[test]
     fn versions_and_skip() {
         assert!(newer("1.10.0", "1.9.9"));
+        assert!(newer("999999999999999999999999999999999", "2"));
+        assert!(!newer("1.0", "1.0.0"));
+        assert!(!should_offer("v1.2.0", "1.2.0", "", true));
         assert!(newer("1.0.0", "1.0"));
         assert!(!newer("1.2-rc1", "1.1"));
         assert!(!should_offer("v1.2.0", "1.1.0", "1.2.0", false));

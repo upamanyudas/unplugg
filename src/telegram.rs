@@ -235,6 +235,14 @@ mod tests {
     use super::multipart_body;
 
     #[test]
+    fn multipart_escapes_filename() {
+        let body = multipart_body("boundary", "123", "video", "a\"\r\nb.mp4", b"video");
+        assert!(String::from_utf8(body)
+            .unwrap()
+            .contains("filename=\"a%22%0D%0Ab.mp4\""));
+    }
+
+    #[test]
     fn multipart_preserves_binary_and_formats_fields() {
         assert_eq!(multipart_body("boundary", "123", "photo", "a.jpg", &[0, 255]),
             b"--boundary\r\nContent-Disposition: form-data; name=\"chat_id\"\r\n\r\n123\r\n--boundary\r\nContent-Disposition: form-data; name=\"photo\"; filename=\"a.jpg\"\r\n\r\n\x00\xff\r\n--boundary--\r\n");

@@ -11,7 +11,11 @@ fn home() -> PathBuf {
     let key = "USERPROFILE";
     #[cfg(not(windows))]
     let key = "HOME";
-    std::env::var_os(key).map(PathBuf::from).unwrap_or_default()
+    #[allow(deprecated)]
+    std::env::var_os(key)
+        .map(PathBuf::from)
+        .or_else(std::env::home_dir)
+        .unwrap_or_default()
 }
 
 pub fn config_file() -> PathBuf {
@@ -38,7 +42,10 @@ pub fn defaults() -> Config {
         "launch_at_login": false, "show_in_dock": false, "settings_pane": 0,
         "setup_done": false, "check_updates": true, "auto_update": false,
         "skipped_version": "", "power_restore": {}
-    }).as_object().unwrap().clone()
+    })
+    .as_object()
+    .unwrap()
+    .clone()
 }
 
 pub fn load_config() -> Result<Config> {
@@ -76,6 +83,18 @@ mod tests {
     use super::*;
 
     #[test]
+    fn missing_and_invalid_files() {
+        let dir =
+            std::env::temp_dir().join(format!("unplugg-invalid-config-{}", std::process::id()));
+        let path = dir.join("config.json");
+        assert_eq!(load_from(&path).unwrap(), defaults());
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(&path, "{").unwrap();
+        assert!(load_from(&path).is_err());
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
     fn merge_and_save_extra_keys() {
         let dir = std::env::temp_dir().join(format!("unplugg-config-{}", std::process::id()));
         let path = dir.join("config.json");
@@ -89,7 +108,10 @@ mod tests {
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            assert_eq!(fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o600);
+            assert_eq!(
+                fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+                0o600
+            );
         }
         fs::remove_dir_all(dir).unwrap();
     }

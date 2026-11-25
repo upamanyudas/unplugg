@@ -14,7 +14,8 @@ use objc2_app_kit::{
 use objc2_foundation::{NSActivityOptions, NSProcessInfo, NSString, NSTimer};
 use serde_json::{Map, Value};
 
-use super::{auth, overlay, sensors, siren, utils};
+use super::{auth, capture, location, overlay, sensors, siren, utils};
+use crate::live;
 use crate::monitor::{Monitor, MonitorConfig, Sensors};
 
 struct State {
@@ -25,6 +26,7 @@ struct State {
     item: Retained<NSStatusItem>,
     toggle: Retained<NSMenuItem>,
     awake: Option<Retained<ProtocolObject<dyn NSObjectProtocol>>>,
+    tracking: Option<(location::Source, live::Tracker)>,
 }
 
 struct AppIvars(RefCell<Option<State>>);
@@ -47,6 +49,7 @@ define_class!(
             let mut state = self.ivars().0.borrow_mut();
             let state = state.as_mut().unwrap();
             state.monitor.stop();
+            stop_tracking(state);
             stop_alarm();
             hide_overlay();
             NSApplicationTerminateReply::TerminateNow
@@ -112,7 +115,16 @@ define_class!(
         fn poll(&self, _: &AnyObject) {
             let mut state = self.ivars().0.borrow_mut();
             let state = state.as_mut().unwrap();
-            if state.events.try_recv().is_ok() && state.config["activated"] == true {
+            if let Ok(reason) = state.events.try_recv() {
+                if state.config["activated"] != true { return; }
+                let config = Value::Object(state.config.clone());
+                if config["live_location"] == true && state.tracking.is_none() {
+                    let tracker = live::Tracker::start(&config);
+                    let updates = tracker.clone();
+                    let source = location::Source::start(move |fix| updates.update(fix));
+                    state.tracking = Some((source, tracker));
+                }
+                std::thread::spawn(move || trigger_alarm(&reason, &config));
                 if state.config["play_sound"] == true { siren::start(state.config["speaker_name"].as_str().unwrap_or("")); }
                 set_icon(&state.item, "menubar_alarm.pdf", false);
                 if state.config["show_overlay"] == true || state.config["flash_screen"] == true {
@@ -134,6 +146,7 @@ impl App {
         let state = state.as_mut().unwrap();
         state.config["activated"] = false.into();
         state.monitor.stop();
+        stop_tracking(state);
         while state.events.try_recv().is_ok() {}
         if let Some(activity) = state.awake.take() {
             unsafe { NSProcessInfo::processInfo().endActivity(&activity) };
@@ -324,7 +337,6 @@ pub fn run() {
     let monitor = Monitor::new(
         move |reason| {
             let _ = sender.send(reason.to_owned());
-            trigger_alarm(reason);
         },
         Arc::new(RwLock::new(monitor_config)),
         sensors::MacSensors,
@@ -337,6 +349,7 @@ pub fn run() {
         item,
         toggle,
         awake: None,
+        tracking: None,
     });
     application.setDelegate(Some(ProtocolObject::from_ref(&*app)));
     unsafe {
@@ -377,7 +390,35 @@ fn prepare_alarm() {
 fn stop_alarm() {
     siren::stop();
 }
-fn trigger_alarm(_reason: &str) {}
+fn stop_tracking(state: &mut State) {
+    if let Some((source, tracker)) = state.tracking.take() {
+        source.stop();
+        tracker.stop();
+    }
+}
+
+fn trigger_alarm(reason: &str, config: &Value) {
+    if config["lock_device"] == true {
+        utils::lock_screen();
+    }
+    let (photo, video) = if config["capture_media"] == true {
+        capture::capture(config)
+    } else {
+        (None, None)
+    };
+    let link = if config["send_location"] == true {
+        location::maps_link(std::time::Duration::from_secs(8))
+    } else {
+        None
+    };
+    crate::telegram::send_alert(
+        reason,
+        config,
+        photo.as_deref(),
+        video.as_deref(),
+        link.as_deref(),
+    );
+}
 fn show_overlay(app: &App, alarm: bool, flash: bool) {
     let app = unsafe { Retained::retain(app as *const App as *mut App) }.unwrap();
     overlay::show(std::rc::Rc::new(move || app.unlock()), alarm, flash);

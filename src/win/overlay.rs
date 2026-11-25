@@ -9,6 +9,7 @@ use windows_sys::Win32::Foundation::*;
 use windows_sys::Win32::Graphics::Gdi::*;
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::System::Threading::GetCurrentThreadId;
+use windows_sys::Win32::UI::HiDpi::GetDpiForWindow;
 use windows_sys::Win32::UI::WindowsAndMessaging::*;
 
 const CLASS: &str = "unplugg-cover";
@@ -17,7 +18,7 @@ const INPUT: u32 = WM_APP + 31;
 
 #[derive(Default)]
 struct State {
-    covers: Vec<HWND>,
+    covers: Vec<(HMONITOR, HWND)>,
     target: HWND,
     message: u32,
     armed_at: Option<Instant>,
@@ -118,6 +119,9 @@ pub fn show(target: HWND, message: u32, alarm: bool, flash: bool) {
         unsafe {
             register();
             sync();
+            if !window().is_null() {
+                SetForegroundWindow(window());
+            }
         }
         listen();
     }
@@ -132,7 +136,7 @@ pub fn show(target: HWND, message: u32, alarm: bool, flash: bool) {
         set_levels(&current.into_keys().map(|name| (name, 100)).collect());
     }
     STATE.with(|s| {
-        for hwnd in &s.borrow().covers {
+        for (_, hwnd) in &s.borrow().covers {
             unsafe {
                 SetLayeredWindowAttributes(
                     *hwnd,
@@ -151,7 +155,13 @@ pub fn listen() {
 }
 
 pub fn window() -> HWND {
-    STATE.with(|s| s.borrow().covers.first().copied().unwrap_or(null_mut()))
+    STATE.with(|s| {
+        s.borrow()
+            .covers
+            .first()
+            .map(|(_, hwnd)| *hwnd)
+            .unwrap_or(null_mut())
+    })
 }
 
 pub fn hide() {
@@ -162,7 +172,7 @@ pub fn hide() {
         *state = State::default();
         (covers, brightness)
     });
-    for hwnd in covers {
+    for (_, hwnd) in covers {
         unsafe {
             DestroyWindow(hwnd);
         }
@@ -182,25 +192,44 @@ unsafe fn register() {
     RegisterClassW(&wc);
 }
 
-unsafe extern "system" fn monitor(_: HMONITOR, _: HDC, rect: *mut RECT, data: LPARAM) -> i32 {
-    (*(data as *mut Vec<RECT>)).push(*rect);
+unsafe extern "system" fn monitor(monitor: HMONITOR, _: HDC, rect: *mut RECT, data: LPARAM) -> i32 {
+    (*(data as *mut Vec<(HMONITOR, RECT)>)).push((monitor, *rect));
     1
 }
 
 unsafe fn sync() {
-    let old = STATE.with(|s| std::mem::take(&mut s.borrow_mut().covers));
-    for hwnd in old {
-        DestroyWindow(hwnd);
-    }
-    let mut displays: Vec<RECT> = Vec::new();
-    EnumDisplayMonitors(
+    let mut displays: Vec<(HMONITOR, RECT)> = Vec::new();
+    if EnumDisplayMonitors(
         null_mut(),
         null(),
         Some(monitor),
         &mut displays as *mut _ as LPARAM,
-    );
+    ) == 0
+    {
+        return;
+    }
+    let old = STATE.with(|s| std::mem::take(&mut s.borrow_mut().covers));
     let mut covers = Vec::new();
-    for rect in displays {
+    for (monitor, hwnd) in old {
+        if displays.iter().any(|(display, _)| *display == monitor) {
+            covers.push((monitor, hwnd));
+        } else {
+            DestroyWindow(hwnd);
+        }
+    }
+    for (monitor, rect) in displays {
+        if let Some((_, hwnd)) = covers.iter().find(|(display, _)| *display == monitor) {
+            SetWindowPos(
+                *hwnd,
+                null_mut(),
+                rect.left,
+                rect.top,
+                rect.right - rect.left,
+                rect.bottom - rect.top,
+                SWP_NOZORDER | SWP_NOACTIVATE,
+            );
+            continue;
+        }
         let hwnd = CreateWindowExW(
             WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_LAYERED,
             wide(CLASS).as_ptr(),
@@ -240,17 +269,14 @@ unsafe fn sync() {
             SetTimer(hwnd, 1, 100, None);
         }
         ShowWindow(hwnd, SW_SHOW);
-        covers.push(hwnd);
-    }
-    if let Some(hwnd) = covers.first() {
-        SetForegroundWindow(*hwnd);
+        covers.push((monitor, hwnd));
     }
     STATE.with(|s| s.borrow_mut().covers = covers);
 }
 
 unsafe extern "system" fn proc(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
     match msg {
-        WM_DISPLAYCHANGE => {
+        WM_DISPLAYCHANGE | WM_DPICHANGED => {
             PostMessageW(hwnd, SYNC, 0, 0);
             0
         }
@@ -313,24 +339,29 @@ unsafe fn paint(hwnd: HWND) {
     if !flash {
         SetBkMode(dc, TRANSPARENT as i32);
         let center = (rect.bottom - rect.top) / 2;
+        let dpi = match GetDpiForWindow(hwnd) {
+            0 => 96,
+            dpi => dpi as i32,
+        };
+        let scale = |value: i32| (value * dpi + 48) / 96;
         let icon_data = include_bytes!("../../assets/win/cover.png");
         let icon = CreateIconFromResourceEx(
             icon_data.as_ptr(),
             icon_data.len() as u32,
             1,
             0x00030000,
-            160,
-            160,
+            scale(160),
+            scale(160),
             0,
         );
         if !icon.is_null() {
             DrawIconEx(
                 dc,
-                (rect.right - 160) / 2,
-                center - 205,
+                (rect.right - scale(160)) / 2,
+                center - scale(205),
                 icon,
-                160,
-                160,
+                scale(160),
+                scale(160),
                 0,
                 null_mut(),
                 DI_NORMAL,
@@ -338,7 +369,7 @@ unsafe fn paint(hwnd: HWND) {
             DestroyIcon(icon);
         }
         let font = CreateFontW(
-            -40,
+            -scale(40),
             0,
             0,
             0,
@@ -358,9 +389,9 @@ unsafe fn paint(hwnd: HWND) {
         let mut title = wide("Protected by unplugg");
         let mut line = RECT {
             left: 0,
-            top: center - 40,
+            top: center - scale(40),
             right: rect.right,
-            bottom: center + 12,
+            bottom: center + scale(12),
         };
         DrawTextW(
             dc,
@@ -372,7 +403,7 @@ unsafe fn paint(hwnd: HWND) {
         SelectObject(dc, old);
         DeleteObject(font);
         let font = CreateFontW(
-            -19,
+            -scale(19),
             0,
             0,
             0,
@@ -390,8 +421,8 @@ unsafe fn paint(hwnd: HWND) {
         let old = SelectObject(dc, font);
         SetTextColor(dc, 0x00bbbbbb);
         let mut hint = wide("Press any key or move the mouse to unlock.");
-        line.top = center + 18;
-        line.bottom = center + 48;
+        line.top = center + scale(18);
+        line.bottom = center + scale(48);
         DrawTextW(
             dc,
             hint.as_mut_ptr(),
@@ -402,7 +433,7 @@ unsafe fn paint(hwnd: HWND) {
         SelectObject(dc, old);
         DeleteObject(font);
         let font = CreateFontW(
-            -16,
+            -scale(16),
             0,
             0,
             0,
@@ -456,8 +487,8 @@ unsafe fn paint(hwnd: HWND) {
         );
         line.left = (rect.right - dot_size.cx - badge_size.cx) / 2;
         line.right = line.left + dot_size.cx;
-        line.top = center + 52;
-        line.bottom = center + 82;
+        line.top = center + scale(52);
+        line.bottom = center + scale(82);
         DrawTextW(
             dc,
             dot.as_mut_ptr(),

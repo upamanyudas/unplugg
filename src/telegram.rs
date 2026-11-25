@@ -31,7 +31,9 @@ pub const EVENT_LABEL: &[(&str, &str)] = &[
 fn agent(timeout: u64) -> Result<ureq::Agent, native_tls::Error> {
     Ok(ureq::AgentBuilder::new()
         .tls_connector(Arc::new(native_tls::TlsConnector::new()?))
-        .timeout(Duration::from_secs(timeout))
+        .timeout_connect(Duration::from_secs(timeout))
+        .timeout_read(Duration::from_secs(timeout))
+        .timeout_write(Duration::from_secs(timeout))
         .build())
 }
 

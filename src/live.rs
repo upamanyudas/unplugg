@@ -51,8 +51,17 @@ impl State {
         self.retry_at = None;
     }
 
-    fn failed(&mut self, now: Instant, retry_after: Option<u64>) {
-        self.retry_at = Some(now + Duration::from_secs(retry_after.unwrap_or(5).max(1)));
+    fn failed(&mut self, now: Instant, failure: Failure) {
+        let wait = match failure {
+            Failure::Retry(seconds) => seconds.max(1),
+            Failure::Rejected => {
+                // the live message is gone or expired, so the next fix starts a new one
+                self.message = None;
+                5
+            }
+            Failure::Network => 5,
+        };
+        self.retry_at = Some(now + Duration::from_secs(wait));
     }
 }
 
@@ -65,6 +74,12 @@ struct Destination {
 enum Event {
     Fix(Fix),
     Stop,
+}
+
+enum Failure {
+    Network,
+    Retry(u64),
+    Rejected,
 }
 
 #[derive(Clone)]
@@ -107,7 +122,7 @@ impl Tracker {
 fn worker(
     destination: Destination,
     receive: Receiver<Event>,
-    mut send: impl FnMut(&Destination, &str, Value) -> Result<Value, Option<u64>>,
+    mut send: impl FnMut(&Destination, &str, Value) -> Result<Value, Failure>,
 ) {
     let mut state = State::new();
     let mut latest = None;
@@ -150,10 +165,10 @@ fn worker(
                     {
                         state.sent(fix, Instant::now(), message);
                     } else {
-                        state.failed(Instant::now(), None);
+                        state.failed(Instant::now(), Failure::Network);
                     }
                 }
-                Err(retry) => state.failed(Instant::now(), retry),
+                Err(failure) => state.failed(Instant::now(), failure),
             }
         }
     }
@@ -162,26 +177,26 @@ fn worker(
 fn stop_message(
     destination: &Destination,
     state: &State,
-    send: &mut impl FnMut(&Destination, &str, Value) -> Result<Value, Option<u64>>,
+    send: &mut impl FnMut(&Destination, &str, Value) -> Result<Value, Failure>,
 ) {
     let Some(message) = state.message else { return };
     if let Some(retry_at) = state.retry_at {
         thread::sleep(retry_at.saturating_duration_since(Instant::now()));
     }
-    loop {
+    for _ in 0..3 {
         match send(
             destination,
             "stopMessageLiveLocation",
             json!({"chat_id": destination.chat, "message_id": message}),
         ) {
-            Err(Some(delay)) => thread::sleep(Duration::from_secs(delay.max(1))),
+            Err(Failure::Retry(delay)) => thread::sleep(Duration::from_secs(delay.max(1))),
             _ => break,
         }
     }
 }
 
-fn call(destination: &Destination, method: &str, body: Value) -> Result<Value, Option<u64>> {
-    let connector = native_tls::TlsConnector::new().map_err(|_| None)?;
+fn call(destination: &Destination, method: &str, body: Value) -> Result<Value, Failure> {
+    let connector = native_tls::TlsConnector::new().map_err(|_| Failure::Network)?;
     let agent = ureq::AgentBuilder::new()
         .tls_connector(std::sync::Arc::new(connector))
         .timeout_connect(Duration::from_secs(10))
@@ -195,16 +210,20 @@ fn call(destination: &Destination, method: &str, body: Value) -> Result<Value, O
         .send_string(&body.to_string())
     {
         Ok(response) | Err(ureq::Error::Status(_, response)) => response,
-        Err(_) => return Err(None),
+        Err(_) => return Err(Failure::Network),
     };
-    let value: Value = serde_json::from_reader(response.into_reader()).map_err(|_| None)?;
+    let value: Value =
+        serde_json::from_reader(response.into_reader()).map_err(|_| Failure::Network)?;
     if value.get("ok").and_then(Value::as_bool) == Some(true) {
-        Ok(value.get("result").cloned().unwrap_or(Value::Null))
-    } else {
-        Err(value
-            .get("parameters")
-            .and_then(|p| p.get("retry_after"))
-            .and_then(Value::as_u64))
+        return Ok(value.get("result").cloned().unwrap_or(Value::Null));
+    }
+    match value
+        .get("parameters")
+        .and_then(|p| p.get("retry_after"))
+        .and_then(Value::as_u64)
+    {
+        Some(seconds) => Err(Failure::Retry(seconds)),
+        None => Err(Failure::Rejected),
     }
 }
 
@@ -228,10 +247,25 @@ mod tests {
         assert!(!state.ready(a, start + Duration::from_secs(30)));
         assert!(!state.ready(b, start + Duration::from_secs(29)));
         assert!(state.ready(b, start + Duration::from_secs(30)));
-        state.failed(start + Duration::from_secs(30), Some(20));
+        state.failed(start + Duration::from_secs(30), Failure::Retry(20));
         assert!(!state.ready(b, start + Duration::from_secs(49)));
         assert!(state.ready(b, start + Duration::from_secs(50)));
         assert!(!state.ready(b, start + Duration::from_secs(61)));
+    }
+
+    #[test]
+    fn rejected_edit_starts_a_new_message() {
+        let start = Instant::now();
+        let mut state = State::new();
+        let a = Fix {
+            latitude: 1.0,
+            longitude: 2.0,
+            accuracy: None,
+            observed: start,
+        };
+        state.sent(a, start, 4);
+        state.failed(start, Failure::Rejected);
+        assert_eq!(state.message, None);
     }
 
     #[test]

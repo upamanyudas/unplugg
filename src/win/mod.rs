@@ -1,4 +1,5 @@
 mod app;
+mod auth;
 mod power;
 #[allow(dead_code)]
 mod sensors;

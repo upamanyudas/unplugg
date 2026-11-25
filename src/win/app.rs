@@ -12,7 +12,7 @@ use windows_sys::Win32::System::Threading::CreateMutexW;
 use windows_sys::Win32::UI::Shell::*;
 use windows_sys::Win32::UI::WindowsAndMessaging::*;
 
-use crate::monitor::{Monitor, MonitorConfig};
+use crate::monitor::{Monitor, MonitorConfig, Sensors};
 use super::sensors::WinSensors;
 
 const TRAY: u32 = WM_APP + 1;
@@ -107,7 +107,7 @@ unsafe extern "system" fn window(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> 
         }
         WM_COMMAND => {
             match w & 0xffff {
-                1 => toggle(),
+                1 => toggle(hwnd),
                 2 => preferences(),
                 3 => dialogs(),
                 4 => updates(),
@@ -145,16 +145,39 @@ unsafe extern "system" fn window(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> 
     }
 }
 
-unsafe fn toggle() {
-    // Activation is enabled once the system sensors and owner check are connected.
-    MessageBoxW(
-        null_mut(),
-        wide("Windows monitoring is not ready yet.").as_ptr(),
-        wide("unplugg").as_ptr(),
-        MB_OK,
-    );
+unsafe fn toggle(hwnd: HWND) {
+    let armed = STATE.with(|s| s.borrow().as_ref().is_some_and(|s| s.config["activated"] == true));
+    if armed {
+        if !super::auth::require("turn off the alarm", windows::Win32::Foundation::HWND(hwnd)) { return; }
+        STATE.with(|s| if let Some(state) = s.borrow_mut().as_mut() {
+            state.config["activated"] = false.into();
+            state.monitor.stop();
+            super::power::release(&mut state.config);
+            set_icon(state, "idle");
+            let _ = crate::config::save_config(&state.config);
+        });
+        return;
+    }
+    if !super::sensors::is_laptop() {
+        MessageBoxW(hwnd, wide("It guards the power cable and the lid. This computer has no battery, so the alarm can't be activated here.").as_ptr(), wide("unplugg is made for laptops").as_ptr(), MB_OK);
+        return;
+    }
+    let monitor_power = STATE.with(|s| s.borrow().as_ref().is_some_and(|s| s.config["monitor_power"] == true));
+    if monitor_power && !WinSensors.is_plugged_in() {
+        MessageBoxW(hwnd, wide("Your laptop should be plugged in to power before you can activate the alarm. Alternatively, turn off \"Power unplugged\" in Settings.").as_ptr(), wide("Plug in first").as_ptr(), MB_OK);
+        return;
+    }
+    STATE.with(|s| if let Some(state) = s.borrow_mut().as_mut() {
+        state.config["activated"] = true.into();
+        super::power::hold(&mut state.config);
+        state.monitor.start();
+        set_icon(state, "armed");
+        let _ = crate::config::save_config(&state.config);
+    });
 }
 unsafe fn quit(hwnd: HWND) {
+    let armed = STATE.with(|s| s.borrow().as_ref().is_some_and(|s| s.config["activated"] == true));
+    if armed && !super::auth::require("quit while armed", windows::Win32::Foundation::HWND(hwnd)) { return; }
     STATE.with(|s| {
         if let Some(state) = s.borrow_mut().as_mut() {
             state.monitor.stop();
@@ -172,6 +195,7 @@ fn alarm() {}
 
 pub fn run() {
     unsafe {
+        let _ = windows::Win32::System::WinRT::RoInitialize(windows::Win32::System::WinRT::RO_INIT_SINGLETHREADED);
         let mutex = CreateMutexW(null(), 0, wide("Local\\unplugg-rust-instance").as_ptr());
         if mutex.is_null() {
             return;
@@ -218,10 +242,10 @@ pub fn run() {
         config["activated"] = false.into();
         super::power::release(&mut config);
         let monitor_config = Arc::new(RwLock::new(MonitorConfig {
-            monitor_power: true,
-            monitor_lid: true,
-            monitor_motion: true,
-            angle_threshold: 5.0,
+            monitor_power: config["monitor_power"] == true,
+            monitor_lid: config["monitor_lid"] == true,
+            monitor_motion: config["monitor_motion"] == true,
+            angle_threshold: config["angle_threshold"].as_f64().unwrap_or(5.0),
         }));
         let target = hwnd as isize;
         let monitor = Monitor::new(

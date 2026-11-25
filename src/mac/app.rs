@@ -14,7 +14,7 @@ use objc2_app_kit::{
 use objc2_foundation::{NSActivityOptions, NSProcessInfo, NSString, NSTimer};
 use serde_json::{Map, Value};
 
-use super::{auth, sensors, utils};
+use super::{auth, sensors, siren, utils};
 use crate::monitor::{Monitor, MonitorConfig, Sensors};
 
 struct State {
@@ -113,7 +113,7 @@ define_class!(
             let mut state = self.ivars().0.borrow_mut();
             let state = state.as_mut().unwrap();
             if state.events.try_recv().is_ok() && state.config["activated"] == true {
-                if state.config["play_sound"] == true { start_alarm(); }
+                if state.config["play_sound"] == true { siren::start(state.config["speaker_name"].as_str().unwrap_or("")); }
                 set_icon(&state.item, "menubar_alarm.pdf", false);
                 if state.config["show_overlay"] == true || state.config["flash_screen"] == true {
                     show_overlay(self, true, state.config["flash_screen"] == true);
@@ -371,9 +371,12 @@ fn check_updates() {}
 fn schedule_updates() {}
 fn open_guide() {}
 fn show_help() {}
-fn prepare_alarm() {}
-fn start_alarm() {}
-fn stop_alarm() {}
+fn prepare_alarm() {
+    siren::prepare();
+}
+fn stop_alarm() {
+    siren::stop();
+}
 fn trigger_alarm(_reason: &str) {}
 fn show_overlay(_app: &App, _alarm: bool, _flash: bool) {}
 fn listen_overlay() {}

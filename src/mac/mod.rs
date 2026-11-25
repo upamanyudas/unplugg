@@ -5,6 +5,7 @@ mod auth;
 mod capture;
 #[allow(dead_code)]
 mod devices;
+mod dialogs;
 #[allow(dead_code)]
 mod location;
 #[allow(dead_code)]
@@ -22,3 +23,4 @@ mod utils;
 pub fn run() {
     app::run();
 }
+

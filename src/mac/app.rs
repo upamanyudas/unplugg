@@ -11,12 +11,13 @@ use objc2::{
     define_class, msg_send, sel, AnyThread, DefinedClass, MainThreadMarker, MainThreadOnly,
 };
 use objc2_app_kit::{
-    NSAlert, NSApplication, NSApplicationDelegate, NSApplicationTerminateReply, NSImage, NSMenu,
+    NSApplication, NSApplicationDelegate, NSApplicationTerminateReply, NSImage, NSMenu,
     NSMenuItem, NSStatusBar, NSStatusItem, NSVariableStatusItemLength,
 };
 use objc2_foundation::{NSActivityOptions, NSProcessInfo, NSString, NSTimer};
 use serde_json::{Map, Value};
 
+use super::dialogs::{self, alert};
 use super::{auth, capture, location, overlay, sensors, siren, utils};
 use crate::live;
 use crate::monitor::{Monitor, MonitorConfig, Sensors};
@@ -97,13 +98,13 @@ define_class!(
         #[unsafe(method(preferences:))]
         fn preferences(&self, _: &AnyObject) { open_preferences(); }
         #[unsafe(method(about:))]
-        fn about(&self, _: &AnyObject) { show_about(); }
+        fn about(&self, _: &AnyObject) { dialogs::show_about(); }
         #[unsafe(method(updates:))]
         fn updates(&self, _: &AnyObject) { check_updates(); }
         #[unsafe(method(guide:))]
         fn guide(&self, _: &AnyObject) { open_guide(); }
         #[unsafe(method(help:))]
-        fn help(&self, _: &AnyObject) { show_help(); }
+        fn help(&self, _: &AnyObject) { dialogs::show_help(); }
         #[unsafe(method(quit:))]
         fn quit(&self, _: &AnyObject) {
             NSApplication::sharedApplication(self.mtm()).terminate(None);
@@ -180,20 +181,6 @@ impl App {
             self.deactivate();
         }
     }
-}
-
-fn alert(title: &str, message: &str, buttons: &[&str]) -> isize {
-    let mtm = MainThreadMarker::new().unwrap();
-    let alert = NSAlert::new(mtm);
-    let application = NSApplication::sharedApplication(mtm);
-    unsafe { alert.setIcon(application.applicationIconImage().as_deref()) };
-    alert.setMessageText(&NSString::from_str(title));
-    alert.setInformativeText(&NSString::from_str(message));
-    for title in buttons {
-        alert.addButtonWithTitle(&NSString::from_str(title));
-    }
-    application.activateIgnoringOtherApps(true);
-    alert.runModal() - 1000
 }
 
 fn settings_name() -> &'static str {
@@ -386,11 +373,9 @@ pub fn run() {
 }
 
 fn open_preferences() {}
-fn show_about() {}
 fn check_updates() {}
 fn schedule_updates() {}
 fn open_guide() {}
-fn show_help() {}
 fn prepare_alarm() {
     siren::prepare();
 }

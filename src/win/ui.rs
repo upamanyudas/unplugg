@@ -104,7 +104,7 @@ pub(super) unsafe fn control(
 const TABS: [&str; 4] = ["General", "Alerts", "Devices", "Permissions"];
 const WIDTH: i32 = 436; // group width inside the 460 px client area
 const ROW: i32 = 26;
-const ALLOWED: COLORREF = 0x0059c734; // #34c759, as the Python
+const ALLOWED: COLORREF = 0x0059c734; // #34c759
 const BLOCKED: COLORREF = 0x00303bff; // #ff3b30
 
 /// A titled frame for `rows` rows. Returns where its first row goes, and moves `y` past it.
@@ -187,7 +187,7 @@ unsafe fn page(hwnd: HWND, index: usize) {
             let mics = devices::microphones();
             let speakers = devices::speakers();
             let current = |key: &str| config[key].as_str().unwrap_or("").to_owned();
-            // the default device is what's selected when none is chosen, as the Python shows it
+            // the default device is what's selected when none is chosen
             let mic = Some(current("mic")).filter(|m| mics.contains(m)).or_else(devices::default_microphone_name);
             let pickers = [
                 ("Camera", devices::cameras(), devices::camera(&current("camera")), "Default camera"),
